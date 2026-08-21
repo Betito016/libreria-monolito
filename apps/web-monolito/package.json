@@ -1,0 +1,23 @@
+{
+  "name": "web-monolito",
+  "version": "1.0.0",
+  "description": "Aplicacion web monolitica (Node.js + PostgreSQL) para administrar una libreria en linea. Renderizado 100% del lado del servidor (EJS), patron MVC y organizacion por modulos. No expone APIs REST/GraphQL/SOAP ni intercambia datos en JSON/XML. Este package.json existe unicamente porque npm lo requiere para administrar el proyecto.",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "multer": "^2.0.0",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

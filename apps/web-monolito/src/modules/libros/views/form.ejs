@@ -1,0 +1,72 @@
+<%- include(partialsDir + '/head', { titulo: libro ? 'Editar libro' : 'Nuevo libro' }) %>
+<%- include(partialsDir + '/header') %>
+<main class="container">
+  <%- include(partialsDir + '/alerts') %>
+  <h1><%= libro ? 'Editar' : 'Nuevo' %> libro</h1>
+  <form method="POST" action="<%= libro ? '/libros/' + libro.id : '/libros' %>" class="formulario">
+    <label for="isbn">ISBN</label>
+    <input id="isbn" type="text" name="isbn" required value="<%= libro ? libro.isbn : '' %>">
+
+    <label for="titulo">Título</label>
+    <input id="titulo" type="text" name="titulo" required value="<%= libro ? libro.titulo : '' %>">
+
+    <label for="anio_publicacion">Año de publicación</label>
+    <input id="anio_publicacion" type="number" name="anio_publicacion"
+           value="<%= libro && libro.anio_publicacion ? libro.anio_publicacion : '' %>">
+
+    <label for="precio">Precio</label>
+    <input id="precio" type="number" step="0.01" min="0" name="precio" required
+           value="<%= libro ? libro.precio : '' %>">
+
+    <label for="stock">Stock</label>
+    <input id="stock" type="number" min="0" name="stock" required
+           value="<%= libro ? libro.stock : 0 %>">
+
+    <label for="formato_id">Formato</label>
+    <select id="formato_id" name="formato_id" required>
+      <option value="">Selecciona...</option>
+      <% formatos.forEach(function(f) { %>
+        <option value="<%= f.id %>" <%= libro && libro.formato_id === f.id ? 'selected' : '' %>>
+          <%= f.nombre %>
+        </option>
+      <% }); %>
+    </select>
+
+    <label>Autores</label>
+    <div class="checklist">
+      <% autores.forEach(function(a) { %>
+        <label class="checkbox">
+          <input type="checkbox" name="autores" value="<%= a.id %>"
+            <%= seleccionAutores.includes(a.id) ? 'checked' : '' %>>
+          <%= a.nombre %>
+        </label>
+      <% }); %>
+      <% if (autores.length === 0) { %>
+        <p class="nota">No hay autores registrados. <a href="/admin/autores/nuevo">Crear uno</a>.</p>
+      <% } %>
+    </div>
+
+    <label>Géneros</label>
+    <div class="checklist">
+      <% generos.forEach(function(g) { %>
+        <label class="checkbox">
+          <input type="checkbox" name="generos" value="<%= g.id %>"
+            <%= seleccionGeneros.includes(g.id) ? 'checked' : '' %>>
+          <%= g.nombre %>
+        </label>
+      <% }); %>
+      <% if (generos.length === 0) { %>
+        <p class="nota">No hay géneros registrados. <a href="/admin/generos/nuevo">Crear uno</a>.</p>
+      <% } %>
+    </div>
+
+    <div class="acciones-form">
+      <button type="submit" class="btn">Guardar</button>
+      <a href="/libros" class="btn btn-secundario">Cancelar</a>
+    </div>
+  </form>
+  <% if (libro) { %>
+    <p class="nota">Las imágenes y los conceptos definidos se administran desde la <a href="/libros/<%= libro.id %>">ficha del libro</a>.</p>
+  <% } %>
+</main>
+<%- include(partialsDir + '/footer') %>

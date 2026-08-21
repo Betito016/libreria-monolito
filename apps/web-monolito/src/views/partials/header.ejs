@@ -1,0 +1,24 @@
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="/" class="marca">📚 Librería en Línea</a>
+    <nav>
+      <a href="/libros">Catálogo</a>
+      <% if (usuarioActual && usuarioActual.rol === 'administrador') { %>
+        <a href="/admin/autores">Autores</a>
+        <a href="/admin/generos">Géneros</a>
+        <a href="/admin/formatos">Formatos</a>
+        <a href="/admin/conceptos">Conceptos</a>
+        <a href="/admin/usuarios">Usuarios</a>
+      <% } %>
+      <% if (usuarioActual) { %>
+        <span class="usuario-actual">Hola, <%= usuarioActual.nombre %></span>
+        <form action="/logout" method="POST" class="form-inline">
+          <button type="submit" class="link-button">Cerrar sesión</button>
+        </form>
+      <% } else { %>
+        <a href="/login">Iniciar sesión</a>
+        <a href="/registro">Registrarse</a>
+      <% } %>
+    </nav>
+  </div>
+</header>

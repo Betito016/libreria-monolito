@@ -1,0 +1,24 @@
+<%- include(partialsDir + '/head', { titulo: 'Editar usuario' }) %>
+<%- include(partialsDir + '/header') %>
+<main class="container angosto">
+  <%- include(partialsDir + '/alerts') %>
+  <h1>Editar usuario</h1>
+  <p><strong><%= usuario.nombre %></strong> — <%= usuario.email %></p>
+  <form method="POST" action="/admin/usuarios/<%= usuario.id %>" class="formulario">
+    <label for="rol">Rol</label>
+    <select id="rol" name="rol">
+      <option value="cliente" <%= usuario.rol === 'cliente' ? 'selected' : '' %>>Cliente</option>
+      <option value="administrador" <%= usuario.rol === 'administrador' ? 'selected' : '' %>>Administrador</option>
+    </select>
+    <label class="checkbox">
+      <input type="checkbox" name="activo" <%= usuario.activo ? 'checked' : '' %>>
+      Cuenta activa
+    </label>
+    <div class="acciones-form">
+      <button type="submit" class="btn">Guardar</button>
+      <a href="/admin/usuarios" class="btn btn-secundario">Cancelar</a>
+    </div>
+  </form>
+  <p class="nota">Solo puede existir un administrador a la vez (restricción de la base de datos).</p>
+</main>
+<%- include(partialsDir + '/footer') %>

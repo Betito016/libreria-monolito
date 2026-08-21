@@ -1,0 +1,32 @@
+<%- include(partialsDir + '/head', { titulo: 'Usuarios' }) %>
+<%- include(partialsDir + '/header') %>
+<main class="container">
+  <%- include(partialsDir + '/alerts') %>
+  <h1>Usuarios registrados</h1>
+  <table class="tabla">
+    <thead>
+      <tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Activo</th><th>Registrado</th><th></th></tr>
+    </thead>
+    <tbody>
+      <% usuarios.forEach(function(u) { %>
+        <tr>
+          <td><%= u.nombre %></td>
+          <td><%= u.email %></td>
+          <td><%= u.rol %></td>
+          <td><%= u.activo ? 'Sí' : 'No' %></td>
+          <td><%= new Date(u.fecha_registro).toLocaleDateString('es-MX') %></td>
+          <td class="acciones">
+            <a href="/admin/usuarios/<%= u.id %>/editar">Editar</a>
+            <form action="/admin/usuarios/<%= u.id %>/eliminar" method="POST" onsubmit="return confirm('¿Eliminar este usuario?');">
+              <button type="submit" class="link-danger">Eliminar</button>
+            </form>
+          </td>
+        </tr>
+      <% }); %>
+      <% if (usuarios.length === 0) { %>
+        <tr><td colspan="6">No hay usuarios registrados.</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</main>
+<%- include(partialsDir + '/footer') %>

@@ -1,0 +1,16 @@
+<%- include(partialsDir + '/head', { titulo: item ? 'Editar ' + etiqueta : 'Nuevo ' + etiqueta }) %>
+<%- include(partialsDir + '/header') %>
+<main class="container angosto">
+  <%- include(partialsDir + '/alerts') %>
+  <h1><%= item ? 'Editar' : 'Nuevo' %> <%= etiqueta %></h1>
+  <form method="POST" action="<%= item ? base + '/' + item.id : base %>" class="formulario">
+    <label for="<%= columna %>"><%= etiqueta %></label>
+    <input id="<%= columna %>" type="text" name="<%= columna %>" required
+           value="<%= item ? item[columna] : '' %>">
+    <div class="acciones-form">
+      <button type="submit" class="btn">Guardar</button>
+      <a href="<%= base %>" class="btn btn-secundario">Cancelar</a>
+    </div>
+  </form>
+</main>
+<%- include(partialsDir + '/footer') %>

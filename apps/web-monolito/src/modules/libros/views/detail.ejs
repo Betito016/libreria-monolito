@@ -1,0 +1,118 @@
+<%- include(partialsDir + '/head', { titulo: libro.titulo }) %>
+<%- include(partialsDir + '/header') %>
+<main class="container">
+  <%- include(partialsDir + '/alerts') %>
+
+  <div class="page-header">
+    <h1><%= libro.titulo %></h1>
+    <% if (usuarioActual && usuarioActual.rol === 'administrador') { %>
+      <div class="acciones">
+        <a class="btn" href="/libros/<%= libro.id %>/editar">Editar</a>
+        <form action="/libros/<%= libro.id %>/eliminar" method="POST" onsubmit="return confirm('¿Eliminar este libro y todos sus datos asociados (imágenes, conceptos)?');">
+          <button type="submit" class="btn btn-peligro">Eliminar</button>
+        </form>
+      </div>
+    <% } %>
+  </div>
+
+  <section class="detalle-libro">
+    <div class="ficha">
+      <p><strong>ISBN:</strong> <%= libro.isbn %></p>
+      <p><strong>Año:</strong> <%= libro.anio_publicacion || '—' %></p>
+      <p><strong>Formato:</strong> <%= libro.formato_nombre %></p>
+      <p><strong>Precio:</strong> $<%= libro.precio %></p>
+      <p><strong>Stock:</strong> <%= libro.stock %></p>
+      <p><strong>Autores:</strong>
+        <%= libro.autores.length ? libro.autores.map(function(a){ return a.nombre; }).join(', ') : '—' %>
+      </p>
+      <p><strong>Géneros:</strong>
+        <%= libro.generos.length ? libro.generos.map(function(g){ return g.nombre; }).join(', ') : '—' %>
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Imágenes</h2>
+    <div class="galeria">
+      <% libro.imagenes.forEach(function(img) { %>
+        <div class="miniatura <%= img.es_principal ? 'principal' : '' %>">
+          <img src="<%= img.url_imagen %>" alt="<%= img.texto_alt || libro.titulo %>">
+          <% if (usuarioActual && usuarioActual.rol === 'administrador') { %>
+            <div class="miniatura-acciones">
+              <% if (!img.es_principal) { %>
+                <form action="/libros/<%= libro.id %>/imagenes/<%= img.id %>/principal" method="POST">
+                  <button type="submit" class="link-button">Hacer principal</button>
+                </form>
+              <% } else { %>
+                <span class="etiqueta-principal">Principal</span>
+              <% } %>
+              <form action="/libros/<%= libro.id %>/imagenes/<%= img.id %>/eliminar" method="POST" onsubmit="return confirm('¿Eliminar imagen?');">
+                <button type="submit" class="link-danger">Eliminar</button>
+              </form>
+            </div>
+          <% } %>
+        </div>
+      <% }); %>
+      <% if (libro.imagenes.length === 0) { %>
+        <p>Este libro no tiene imágenes todavía.</p>
+      <% } %>
+    </div>
+
+    <% if (usuarioActual && usuarioActual.rol === 'administrador') { %>
+      <form method="POST" action="/libros/<%= libro.id %>/imagenes" enctype="multipart/form-data" class="formulario-inline">
+        <input type="file" name="imagen" accept="image/*" required>
+        <input type="text" name="texto_alt" placeholder="Texto alternativo (opcional)">
+        <label class="checkbox"><input type="checkbox" name="es_principal"> Marcar como principal</label>
+        <button type="submit" class="btn">Subir imagen</button>
+      </form>
+    <% } %>
+  </section>
+
+  <section>
+    <h2>Conceptos definidos en este libro</h2>
+    <table class="tabla">
+      <thead>
+        <tr>
+          <th>Concepto</th><th>Definición</th>
+          <% if (usuarioActual && usuarioActual.rol === 'administrador') { %><th></th><% } %>
+        </tr>
+      </thead>
+      <tbody>
+        <% libro.conceptos.forEach(function(c) { %>
+          <tr>
+            <td><%= c.termino %></td>
+            <td><%= c.definicion %></td>
+            <% if (usuarioActual && usuarioActual.rol === 'administrador') { %>
+              <td>
+                <form action="/libros/<%= libro.id %>/conceptos/<%= c.concepto_id %>/eliminar" method="POST" onsubmit="return confirm('¿Quitar este concepto del libro?');">
+                  <button type="submit" class="link-danger">Quitar</button>
+                </form>
+              </td>
+            <% } %>
+          </tr>
+        <% }); %>
+        <% if (libro.conceptos.length === 0) { %>
+          <tr><td colspan="3">Este libro no define conceptos todavía.</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+
+    <% if (usuarioActual && usuarioActual.rol === 'administrador') { %>
+      <form method="POST" action="/libros/<%= libro.id %>/conceptos" class="formulario">
+        <label for="concepto_id">Concepto existente</label>
+        <select id="concepto_id" name="concepto_id">
+          <option value="">— Ninguno —</option>
+          <% conceptosCatalogo.forEach(function(c) { %>
+            <option value="<%= c.id %>"><%= c.termino %></option>
+          <% }); %>
+        </select>
+        <label for="nuevo_termino">O escribe un concepto nuevo</label>
+        <input id="nuevo_termino" type="text" name="nuevo_termino" placeholder="Ej. Polimorfismo">
+        <label for="definicion">Definición para este libro</label>
+        <textarea id="definicion" name="definicion" rows="3" required></textarea>
+        <button type="submit" class="btn">Agregar concepto al libro</button>
+      </form>
+    <% } %>
+  </section>
+</main>
+<%- include(partialsDir + '/footer') %>

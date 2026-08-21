@@ -1,0 +1,38 @@
+<%- include(partialsDir + '/head', { titulo: 'Catálogo de libros' }) %>
+<%- include(partialsDir + '/header') %>
+<main class="container">
+  <%- include(partialsDir + '/alerts') %>
+  <div class="page-header">
+    <h1>Catálogo</h1>
+    <% if (usuarioActual && usuarioActual.rol === 'administrador') { %>
+      <a class="btn" href="/libros/nuevo">+ Nuevo libro</a>
+    <% } %>
+  </div>
+
+  <form method="GET" action="/libros" class="busqueda">
+    <input type="text" name="q" placeholder="Buscar por título o ISBN..." value="<%= busqueda %>">
+    <button type="submit" class="btn">Buscar</button>
+  </form>
+
+  <div class="grid-libros">
+    <% libros.forEach(function(l) { %>
+      <a class="tarjeta-libro" href="/libros/<%= l.id %>">
+        <div class="portada">
+          <% if (l.portada) { %>
+            <img src="<%= l.portada %>" alt="<%= l.titulo %>">
+          <% } else { %>
+            <div class="sin-imagen">Sin imagen</div>
+          <% } %>
+        </div>
+        <h3><%= l.titulo %></h3>
+        <p class="autor"><%= l.autores %></p>
+        <p class="precio">$<%= l.precio %> · <%= l.formato %></p>
+        <p class="stock"><%= l.stock %> en stock</p>
+      </a>
+    <% }); %>
+    <% if (libros.length === 0) { %>
+      <p>No se encontraron libros.</p>
+    <% } %>
+  </div>
+</main>
+<%- include(partialsDir + '/footer') %>
