@@ -5,25 +5,21 @@
 const pool = require('../../config/db');
 
 async function listar(busqueda) {
+  // Usa vista_catalogo_libros (db/06_views.sql) en vez de repetir aquí
+  // el JOIN + GROUP BY: la vista es la única fuente de esa lógica de
+  // agregación (autores concatenados, portada), reutilizable si otra
+  // pantalla llega a necesitar el mismo listado.
   const params = [];
   let where = '';
   if (busqueda) {
     params.push(`%${busqueda}%`);
-    where = 'WHERE l.titulo ILIKE $1 OR l.isbn ILIKE $1';
+    where = 'WHERE titulo ILIKE $1 OR isbn ILIKE $1';
   }
   const { rows } = await pool.query(
-    `SELECT l.id, l.isbn, l.titulo, l.anio_publicacion, l.precio, l.stock,
-            f.nombre AS formato,
-            COALESCE(string_agg(DISTINCT a.nombre, ', '), '—') AS autores,
-            (SELECT im.url_imagen FROM imagenes im WHERE im.libro_id = l.id
-               ORDER BY im.es_principal DESC, im.orden ASC LIMIT 1) AS portada
-       FROM libros l
-       JOIN formatos f ON f.id = l.formato_id
-       LEFT JOIN libro_autor la ON la.libro_id = l.id
-       LEFT JOIN autores a ON a.id = la.autor_id
+    `SELECT id, isbn, titulo, anio_publicacion, precio, stock, formato, autores, portada
+       FROM vista_catalogo_libros
        ${where}
-       GROUP BY l.id, f.nombre
-       ORDER BY l.titulo ASC`,
+       ORDER BY titulo ASC`,
     params
   );
   return rows;
@@ -105,45 +101,16 @@ async function eliminar(id) {
 }
 
 // --- Relación M:N libro-autor ---
+// La atomicidad (borrar + reinsertar todo o nada) la garantiza ahora
+// sp_asignar_autores_libro (db/04_stored_procedures.sql) en una sola
+// llamada, en vez de una transacción manual BEGIN/COMMIT en JS.
 async function asignarAutores(libroId, autorIds) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM libro_autor WHERE libro_id = $1', [libroId]);
-    for (const autorId of autorIds) {
-      await client.query(
-        'INSERT INTO libro_autor (libro_id, autor_id) VALUES ($1,$2)',
-        [libroId, autorId]
-      );
-    }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  await pool.query('CALL sp_asignar_autores_libro($1, $2)', [libroId, autorIds]);
 }
 
 // --- Relación M:N libro-genero ---
 async function asignarGeneros(libroId, generoIds) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM libro_genero WHERE libro_id = $1', [libroId]);
-    for (const generoId of generoIds) {
-      await client.query(
-        'INSERT INTO libro_genero (libro_id, genero_id) VALUES ($1,$2)',
-        [libroId, generoId]
-      );
-    }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  await pool.query('CALL sp_asignar_generos_libro($1, $2)', [libroId, generoIds]);
 }
 
 // --- Imágenes (1:N) ---

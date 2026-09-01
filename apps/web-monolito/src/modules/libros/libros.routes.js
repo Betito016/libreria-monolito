@@ -2,15 +2,15 @@
 const express = require('express');
 const controller = require('./libros.controller');
 const upload = require('../../middlewares/upload');
-const { requireAdmin } = require('../../middlewares/auth');
+const { requireAdmin, requireLogin } = require('../../middlewares/auth');
 
 const router = express.Router();
 
-// Catálogo: lectura pública
-router.get('/', controller.index);
+// Catálogo: lectura reservada a usuarios autenticados (RF-04)
+router.get('/', requireLogin, controller.index);
 router.get('/nuevo', requireAdmin, controller.nuevoForm);
 router.post('/', requireAdmin, controller.crear);
-router.get('/:id', controller.detalle);
+router.get('/:id', requireLogin, controller.detalle);
 router.get('/:id/editar', requireAdmin, controller.editarForm);
 router.post('/:id', requireAdmin, controller.actualizar);
 router.post('/:id/eliminar', requireAdmin, controller.eliminar);

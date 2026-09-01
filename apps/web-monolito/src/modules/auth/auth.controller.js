@@ -36,6 +36,10 @@ module.exports = {
         req.session.flash = { type: 'error', message: 'Revisa los datos: las contraseñas deben coincidir.' };
         return res.redirect('/registro');
       }
+      if (password.length < 8) {
+        req.session.flash = { type: 'error', message: 'La contraseña debe tener al menos 8 caracteres.' };
+        return res.redirect('/registro');
+      }
       const existente = await usuariosModel.obtenerPorEmail(email);
       if (existente) {
         req.session.flash = { type: 'error', message: 'Ese correo ya está registrado.' };

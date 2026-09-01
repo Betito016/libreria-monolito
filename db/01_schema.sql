@@ -1,10 +1,11 @@
 -- =====================================================================
--- data/db_scheme.sql
--- Sistema de administración de libros - Diseño de Base de Datos
+-- db/01_schema.sql
+-- Sistema de administración de libros — Diseño de Base de Datos
 -- Motor: PostgreSQL
 -- =====================================================================
 --
--- ANÁLISIS Y NORMALIZACIÓN
+-- ANÁLISIS Y NORMALIZACIÓN (ver también docs/NORMALIZATION_4FN.xlsx,
+-- pendiente de crear, y docs/DB_DESIGN_ER_4FN.png)
 -- ---------------------------------------------------------------------
 -- Dependencias funcionales (FD):
 --   isbn -> titulo, anio_publicacion, precio, stock, formato_id
@@ -15,24 +16,38 @@
 --   isbn ->> imagen          (un libro, varias imágenes)
 --   isbn ->> (concepto, definicion)
 --       -> la definición depende del PAR (libro, concepto), no solo
---          del concepto: el mismo concepto puede tener definiciones
---          distintas según el libro. Por eso "concepto" es catálogo
---          aparte y "definicion" vive en la tabla puente libro_concepto.
+--          del concepto, porque el mismo concepto puede tener
+--          definiciones distintas según el libro. Por eso "concepto"
+--          es catálogo aparte y "definicion" vive en la tabla puente.
 --
--- Catálogos independientes: formato y genero.
+-- Catálogos independientes: formato y genero (no dependen de nada más
+-- que de su propio identificador).
 --
--- Regla de negocio: a lo más UN usuario con rol 'administrador'
--- (índice único parcial, no es normalización sino integridad de negocio).
+-- Regla de negocio: a lo más UN usuario con rol 'administrador'.
+-- Se resuelve con un índice único parcial (no es normalización, es
+-- integridad de negocio) — ver ux_un_solo_administrador más abajo.
+--
+-- Ejecutar como superusuario (mismo rol que corrió 00_create_database.sql),
+-- NO como library_user, porque este script crea el esquema y al final le
+-- otorga privilegios a library_user (no puede otorgárselos a sí mismo):
+--   sudo -i -u postgres psql -d library_db -f db/01_schema.sql
 -- =====================================================================
 
 BEGIN;
 
+-- ---------------------------------------------------------------------
+-- Extensiones útiles (pgcrypto: gen_random_uuid() para usuarios.id)
+-- ---------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- ---------------------------------------------------------------------
+-- Tipos enumerados
+-- ---------------------------------------------------------------------
 CREATE TYPE rol_usuario AS ENUM ('administrador', 'cliente');
 
 -- =====================================================================
 -- TABLA: usuarios
+-- Administra los usuarios registrados del sistema.
 -- =====================================================================
 CREATE TABLE usuarios (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -45,6 +60,9 @@ CREATE TABLE usuarios (
     actualizado_en  TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
+-- Regla de negocio: máximo un administrador en todo el sistema.
+-- Un índice único parcial garantiza que a lo más UNA fila cumpla
+-- rol = 'administrador'.
 CREATE UNIQUE INDEX ux_un_solo_administrador
     ON usuarios ((rol))
     WHERE rol = 'administrador';
@@ -52,28 +70,31 @@ CREATE UNIQUE INDEX ux_un_solo_administrador
 -- =====================================================================
 -- CATÁLOGOS INDEPENDIENTES
 -- =====================================================================
+
 CREATE TABLE formatos (
     id      SERIAL PRIMARY KEY,
-    nombre  VARCHAR(50) NOT NULL UNIQUE
+    nombre  VARCHAR(50) NOT NULL UNIQUE   -- ej: 'Tapa dura', 'Digital', 'Audiolibro'
 );
 
 CREATE TABLE generos (
     id      SERIAL PRIMARY KEY,
-    nombre  VARCHAR(80) NOT NULL UNIQUE
+    nombre  VARCHAR(80) NOT NULL UNIQUE   -- ej: 'Ficción', 'Historia', 'Ciencia'
 );
 
 CREATE TABLE autores (
     id      SERIAL PRIMARY KEY,
-    nombre  VARCHAR(150) NOT NULL UNIQUE
+    nombre  VARCHAR(150) NOT NULL,
+    UNIQUE (nombre)
 );
 
 CREATE TABLE conceptos (
     id       SERIAL PRIMARY KEY,
-    termino  VARCHAR(150) NOT NULL UNIQUE
+    termino  VARCHAR(150) NOT NULL UNIQUE  -- el nombre del concepto, ej. 'Recursión'
 );
 
 -- =====================================================================
 -- TABLA: libros
+-- Contiene únicamente los atributos que dependen exclusivamente del ISBN.
 -- =====================================================================
 CREATE TABLE libros (
     id                SERIAL PRIMARY KEY,
@@ -90,21 +111,26 @@ CREATE TABLE libros (
 CREATE INDEX ix_libros_titulo ON libros (titulo);
 
 -- =====================================================================
--- RELACIONES M:N
+-- RELACIONES M:N (resuelven las dependencias multivaluadas)
 -- =====================================================================
+
+-- Un libro puede tener varios autores; un autor puede escribir varios libros.
 CREATE TABLE libro_autor (
     libro_id   INTEGER NOT NULL REFERENCES libros(id)  ON DELETE CASCADE,
     autor_id   INTEGER NOT NULL REFERENCES autores(id) ON DELETE RESTRICT,
     PRIMARY KEY (libro_id, autor_id)
 );
 
+-- Un libro puede pertenecer a varios géneros.
 CREATE TABLE libro_genero (
     libro_id   INTEGER NOT NULL REFERENCES libros(id)   ON DELETE CASCADE,
     genero_id  INTEGER NOT NULL REFERENCES generos(id)  ON DELETE RESTRICT,
     PRIMARY KEY (libro_id, genero_id)
 );
 
--- La definición depende del PAR (libro, concepto).
+-- Un libro define varios conceptos, y la definición depende del PAR
+-- (libro, concepto) -- por eso el atributo "definicion" vive aquí y no
+-- en la tabla "conceptos".
 CREATE TABLE libro_concepto (
     libro_id     INTEGER NOT NULL REFERENCES libros(id)     ON DELETE CASCADE,
     concepto_id  INTEGER NOT NULL REFERENCES conceptos(id)  ON DELETE RESTRICT,
@@ -114,6 +140,7 @@ CREATE TABLE libro_concepto (
 
 -- =====================================================================
 -- IMÁGENES
+-- Un libro puede tener varias imágenes (portada, contraportada, etc.)
 -- =====================================================================
 CREATE TABLE imagenes (
     id            SERIAL PRIMARY KEY,
@@ -127,27 +154,29 @@ CREATE TABLE imagenes (
 
 CREATE INDEX ix_imagenes_libro_id ON imagenes (libro_id);
 
+-- A lo más una imagen "principal" por libro.
 CREATE UNIQUE INDEX ux_una_imagen_principal_por_libro
     ON imagenes (libro_id)
     WHERE es_principal = TRUE;
 
 -- =====================================================================
--- TRIGGERS: actualizado_en automático
+-- PRIVILEGIOS MÍNIMOS PARA library_user (rol de aplicación)
 -- =====================================================================
-CREATE OR REPLACE FUNCTION fn_actualizar_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.actualizado_en = now();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_usuarios_actualizado
-    BEFORE UPDATE ON usuarios
-    FOR EACH ROW EXECUTE FUNCTION fn_actualizar_timestamp();
-
-CREATE TRIGGER trg_libros_actualizado
-    BEFORE UPDATE ON libros
-    FOR EACH ROW EXECUTE FUNCTION fn_actualizar_timestamp();
+-- library_user NO es owner de estas tablas (las crea el superusuario
+-- que ejecuta este script); solo puede leer y escribir filas, nunca
+-- alterar el esquema (no DDL) ni crear/borrar roles o bases de datos.
+-- Ver docs/SECURITY_REVIEW.md, control 9, y docs/ENGINEERING_DECISIONS.md
+-- decisión D-13.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO library_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO library_user;
 
 COMMIT;
+
+-- Los triggers (05_triggers.sql), stored procedures (04_stored_procedures.sql)
+-- y vistas (06_views.sql) se cargan por separado, en ese orden relativo,
+-- después de db/02_seed_30_per_table.sql y db/03_all_quieries_before_stored_procedures.sql
+-- (ver docs/GCP_COMMANDS.md, pendiente, para el orden de carga completo).
+
+-- =====================================================================
+-- FIN 01_schema.sql
+-- =====================================================================
