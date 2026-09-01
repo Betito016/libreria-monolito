@@ -1,0 +1,15 @@
+[Unit]
+Description=Libreria en Linea - monolito Node.js
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=alejandro_vs0506
+WorkingDirectory=/opt/udem/integracion02/libreria-monolito/apps/web-monolito
+EnvironmentFile=/opt/udem/integracion02/libreria-monolito/apps/web-monolito/.env
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Librería en Línea — Ejercicio 02 · Integración de Aplicaciones Computacionales</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container">
+    <div class="topbar-marca">
+      <img src="img/udem-logo.png" alt="UDEM">
+      Ejercicio 02 — Librería en Línea
+    </div>
+    <nav class="topnav">
+      <a href="#objetivo">Objetivo</a>
+      <a href="#requisitos">Requisitos</a>
+      <a href="#arquitectura">Arquitectura</a>
+      <a href="#datos">Base de datos</a>
+      <a href="#infraestructura">Infraestructura</a>
+      <a href="#modulos">Módulos</a>
+      <a href="#funcionalidades">Funcionalidades</a>
+      <a href="#seguridad">Seguridad</a>
+      <a href="#pruebas">Pruebas</a>
+      <a href="#despliegue">Despliegue</a>
+      <a href="#galeria">Galería</a>
+      <a href="#decisiones">Decisiones</a>
+      <a href="#ia">Uso de IA</a>
+      <a href="#conclusiones">Conclusiones</a>
+      <a href="#descargas">Descargas</a>
+    </nav>
+  </div>
+</header>
+
+<!-- 1. Portada -->
+<section class="portada" id="portada">
+  <div class="container">
+    <img class="sello" src="img/udem-logo.png" alt="Universidad de Monterrey">
+    <div class="franja">Integración de Aplicaciones Computacionales · 2026</div>
+    <h1>Aplicación Web Monolítica para Gestión de una Librería</h1>
+    <p class="subtitulo">Ejercicio guiado + Trabajo en casa · Ejercicio 02</p>
+    <dl class="portada-datos">
+      <dt>Nombre</dt><dd>Humberto Alejandro Vargas Sánchez</dd>
+      <dt>Matrícula</dt><dd>604775</dd>
+      <dt>Fecha</dt><dd>01/09/2026</dd>
+      <dt>Materia</dt><dd>Integración de Aplicaciones Computacionales</dd>
+    </dl>
+  </div>
+</section>
+
+<!-- 2. Objetivo y alcance -->
+<section class="bloque" id="objetivo">
+  <div class="container">
+    <h2><span class="num">02</span> Objetivo y alcance</h2>
+    <p class="lead">Qué construye este proyecto y dónde termina su alcance.</p>
+    <p>
+      Se construyó una aplicación web <strong>monolítica</strong> para administrar el catálogo de una librería en
+      línea: gestión de libros con múltiples autores y géneros, conceptos técnicos definidos por libro (con
+      definición propia por cada par libro-concepto), imágenes con portada, control de stock y precio, y un único
+      usuario Administrador. Todo el sistema — interfaz, lógica de negocio y acceso a datos — vive en un solo
+      proceso Node.js/Express, renderizando HTML del lado del servidor con EJS y accediendo a PostgreSQL
+      directamente vía <code>pg</code>, sin ORM y sin ninguna API intermedia.
+    </p>
+    <p>
+      El propósito del ejercicio no fue solo "hacer que funcione", sino tomar y justificar decisiones de
+      ingeniería en cada etapa: análisis de requisitos, modelo de datos normalizado hasta 4FN, arquitectura,
+      seguridad, pruebas y despliegue — todo documentado y, en la medida de lo posible, <strong>verificado en
+      vivo</strong> contra una base de datos y un servidor reales, no solo revisado en el código.
+    </p>
+    <div class="grid-cards">
+      <div class="card"><h4>Dentro de alcance</h4><p>CRUD completo, autenticación y roles, conceptos técnicos por libro, imágenes, seguridad, pruebas, despliegue con reverse proxy.</p></div>
+      <div class="card"><h4>Fuera de alcance</h4><p>Pagos, envíos, facturación, roles adicionales a cliente/administrador, multi-idioma.</p></div>
+      <div class="card"><h4>Restricción respetada</h4><p>Sin API REST/GraphQL/SOAP ni JSON/XML entre frontend y backend — formularios HTML clásicos (Post/Redirect/Get).</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Análisis de requisitos -->
+<section class="bloque" id="requisitos">
+  <div class="container">
+    <h2><span class="num">03</span> Análisis de requisitos</h2>
+    <p class="lead">
+      Documento completo: <a href="docs/REQUIREMENTS.md">docs/REQUIREMENTS.md</a> — 15 requisitos funcionales
+      (RF-01 a RF-15) y 8 no funcionales (RNF-01 a RNF-08), cada uno con su estado verificado contra el código
+      real, no una lista copiada del enunciado.
+    </p>
+    <h3>Actores</h3>
+    <div class="tabla-wrap">
+      <table>
+        <tr><th>Actor</th><th>Puede hacer</th><th>No puede</th></tr>
+        <tr><td>Visitante (sin sesión)</td><td>Ver <code>/</code>, <code>/login</code>, <code>/registro</code></td><td>Cualquier ruta de catálogo o administración</td></tr>
+        <tr><td>Usuario registrado</td><td>Consultar catálogo, ficha de libro, conceptos</td><td>Crear/editar/eliminar cualquier cosa; entrar a <code>/admin/*</code></td></tr>
+        <tr><td>Administrador (máx. 1)</td><td>CRUD completo de libros, catálogos, imágenes, conceptos y usuarios</td><td>Crear un segundo administrador (bloqueado en la base de datos)</td></tr>
+      </table>
+    </div>
+    <h3>Riesgos identificados y su mitigación</h3>
+    <ul>
+      <li>Acceso no autorizado — middleware de sesión y rol (<code>requireLogin</code>/<code>requireAdmin</code>)</li>
+      <li>SQL Injection — 100% de las consultas parametrizadas, probado con inyección real</li>
+      <li>Subida de archivos peligrosos — whitelist de extensión, límite de tamaño, nombre generado por el servidor</li>
+      <li>Exposición de credenciales — <code>.env</code> nunca en el repositorio, contraseñas con <code>bcrypt</code></li>
+      <li>Eliminación accidental — <code>ON DELETE RESTRICT</code> en las relaciones puente</li>
+      <li>Publicación de datos sensibles — checklist explícito antes de publicar (ver sección Descargas)</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 4. Arquitectura -->
+<section class="bloque" id="arquitectura">
+  <div class="container">
+    <h2><span class="num">04</span> Decisiones de arquitectura y diagrama del monolito</h2>
+    <p class="lead">
+      Registro completo con esquema necesidad → alternativas → decisión → justificación → riesgo → evidencia:
+      <a href="docs/ENGINEERING_DECISIONS.md">docs/ENGINEERING_DECISIONS.md</a> (19 decisiones documentadas).
+    </p>
+    <div class="diagrama-wrap">
+      <img src="docs/ARCHITECTURE_MONOLITHIC.svg" alt="Diagrama de macro-arquitectura monolítica">
+      <p class="diagrama-caption">Navegador → NGINX (reverse proxy) → Express (7 capas internas) → PostgreSQL / almacenamiento de imágenes</p>
+    </div>
+    <p>
+      Aunque el código está organizado en 7 capas internas (presentación, rutas/controladores, servicios, middleware,
+      acceso a datos, vistas, estáticos), sigue siendo un monolito: todas comparten el mismo proceso y se despliegan
+      juntas como una sola unidad — no hay red ni API entre ellas.
+    </p>
+    <h3>Por qué monolito y no microservicios (Tarea 2c)</h3>
+    <p>
+      Análisis comparativo completo (~650 palabras) en
+      <a href="docs/TAREA_2C_EVALUACION_ARQUITECTONICA.md">docs/TAREA_2C_EVALUACION_ARQUITECTONICA.md</a>.
+      En resumen: con 7 entidades, un solo rol de escritura y un equipo de una persona, un monolito minimiza la
+      variable que más cuesta en un proyecto pequeño — la coordinación entre capas/servicios — sin sacrificar
+      separación de responsabilidades en el código.
+    </p>
+  </div>
+</section>
+
+<!-- 5. Base de datos -->
+<section class="bloque" id="datos">
+  <div class="container">
+    <h2><span class="num">05</span> Diseño de la base de datos, diagrama ER y explicación de 4FN</h2>
+    <p class="lead">
+      10 tablas normalizadas hasta 4FN. Proceso completo de normalización (1FN → 2FN → 3FN/BCNF → 4FN):
+      <a href="docs/NORMALIZATION_4FN.xlsx">docs/NORMALIZATION_4FN.xlsx</a>. Esquema ejecutable:
+      <a href="sql/01_schema.sql">sql/01_schema.sql</a>.
+    </p>
+    <div class="diagrama-wrap">
+      <img src="docs/DB_DESIGN_ER_4FN.svg" alt="Diagrama Entidad-Relación en 4FN">
+      <p class="diagrama-caption">Tablas puente en rosa oscuro resuelven las dependencias multivaluadas; <code>libro_concepto</code> lleva además el atributo propio <code>definicion</code>.</p>
+    </div>
+    <p>
+      La evidencia central de la 4FN: un libro puede tener varios autores, varios géneros, varias imágenes y varios
+      conceptos definidos — cuatro dependencias multivaluadas <strong>independientes entre sí</strong>. Ninguna se
+      modeló como lista dentro de <code>libros</code>; cada una vive en su propia tabla puente con clave primaria
+      compuesta. <code>libro_concepto</code> es el caso más interesante: la <code>definicion</code> depende del
+      <strong>par</strong> (libro, concepto), no solo del concepto — el mismo concepto puede tener definiciones
+      distintas en libros distintos, verificado con datos reales en el seed.
+    </p>
+    <h3>Integridad reforzada en el motor</h3>
+    <ul>
+      <li><strong>Máximo un Administrador:</strong> índice único parcial (<code>ux_un_solo_administrador</code>), no solo validado en la aplicación</li>
+      <li><strong>Máximo una imagen principal por libro:</strong> índice único parcial (<code>ux_una_imagen_principal_por_libro</code>)</li>
+      <li>2 stored procedures (<a href="sql/04_stored_procedures.sql">sql/04_stored_procedures.sql</a>), 2 triggers de auditoría (<a href="sql/05_triggers.sql">sql/05_triggers.sql</a>) y 1 vista (<a href="sql/06_views.sql">sql/06_views.sql</a>), todos verificados en vivo</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 6. Infraestructura GCP -->
+<section class="bloque" id="infraestructura">
+  <div class="container">
+    <h2><span class="num">06</span> Infraestructura GCP y PostgreSQL</h2>
+    <p class="lead">
+      Comandos reales ejecutados, no un plan hipotético: <a href="docs/GCP_COMMANDS.md">docs/GCP_COMMANDS.md</a>.
+    </p>
+    <div class="tabla-wrap">
+      <table>
+        <tr><th>Campo</th><th>Valor</th></tr>
+        <tr><td>Instancia</td><td><code>integracion</code></td></tr>
+        <tr><td>Zona</td><td><code>us-central1-c</code></td></tr>
+        <tr><td>Tipo de máquina</td><td><code>e2-standard-2</code> (2 vCPU, 8 GB RAM)</td></tr>
+        <tr><td>Imagen</td><td>CentOS Stream 10</td></tr>
+        <tr><td>PostgreSQL</td><td>18.6, rol de aplicación <code>library_user</code> con privilegio mínimo (sin DDL)</td></tr>
+      </table>
+    </div>
+    <p>
+      Al revisar la instancia se encontraron y corrigieron dos brechas reales que no eran visibles solo leyendo el
+      código: el rol <code>library_user</code> era dueño (<code>OWNER</code>) completo de la base de datos, y el
+      firewall tenía el puerto 3000 abierto a Internet con reglas duplicadas — ambas corregidas y verificadas
+      (ver sección Seguridad).
+    </p>
+  </div>
+</section>
+
+<!-- 7. Módulos -->
+<section class="bloque" id="modulos">
+  <div class="container">
+    <h2><span class="num">07</span> Estructura de módulos de Node.js</h2>
+    <div class="tabla-wrap">
+      <table>
+        <tr><th>Carpeta / archivo</th><th>Responsabilidad</th></tr>
+        <tr><td><code>app.js</code></td><td>Inicialización de Express, middleware, montaje de rutas</td></tr>
+        <tr><td><code>config/db.js</code></td><td>Pool de conexión a PostgreSQL</td></tr>
+        <tr><td><code>middlewares/</code></td><td><code>auth.js</code> (requireLogin/requireAdmin), <code>upload.js</code> (multer)</td></tr>
+        <tr><td><code>modules/</code></td><td>Un directorio por entidad: auth, usuarios, libros, autores, generos, formatos, conceptos</td></tr>
+        <tr><td><code>modules/catalogo/catalogo.factory.js</code></td><td>Fábrica MVC compartida por los 4 catálogos estructuralmente idénticos</td></tr>
+        <tr><td><code>views/</code></td><td>Plantillas EJS y partials compartidos — sin SQL ni lógica de negocio</td></tr>
+        <tr><td><code>public/</code></td><td>CSS y estáticos</td></tr>
+      </table>
+    </div>
+    <p>Cada módulo separa <code>*.model.js</code> (SQL parametrizado), <code>*.controller.js</code> (orquestación) y <code>*.routes.js</code> (mapeo URL→controlador) — patrón MVC.</p>
+  </div>
+</section>
+
+<!-- 8. Funcionalidades -->
+<section class="bloque" id="funcionalidades">
+  <div class="container">
+    <h2><span class="num">08</span> Funcionalidades implementadas</h2>
+    <div class="grid-cards">
+      <div class="card"><h4>Autenticación y roles</h4><p>Registro, login, logout, sesión de servidor, contraseña mínima de 8 caracteres con hash bcrypt.</p></div>
+      <div class="card"><h4>CRUD de libros</h4><p>ISBN, título, año, precio, stock, formato — con validación server-side completa.</p></div>
+      <div class="card"><h4>Relaciones M:N</h4><p>Múltiples autores y géneros por libro, gestionados vía stored procedures atómicos.</p></div>
+      <div class="card"><h4>Conceptos técnicos</h4><p>Definiciones propias por libro, incluido el caso obligatorio de Cloud Computing con 10 conceptos.</p></div>
+      <div class="card"><h4>Imágenes</h4><p>Carga con validación de extensión/tamaño, portada marcable, nombre generado por el servidor.</p></div>
+      <div class="card"><h4>Catálogos y usuarios</h4><p>CRUD de autores, géneros, formatos, conceptos, y administración de usuarios/roles.</p></div>
+    </div>
+    <p>
+      Flujo típico: <code>Navegador → formulario HTML (POST) → ruta Express → middleware de auth → controlador →
+      validación server-side → modelo (SQL parametrizado o CALL a stored procedure) → PostgreSQL → redirección
+      (Post/Redirect/Get) → vista EJS renderizada.</code>
+    </p>
+  </div>
+</section>
+
+<!-- 9. Seguridad -->
+<section class="bloque" id="seguridad">
+  <div class="container">
+    <h2><span class="num">09</span> Seguridad y roles</h2>
+    <p class="lead">
+      Revisión completa de 12 controles: <a href="docs/SECURITY_REVIEW.md">docs/SECURITY_REVIEW.md</a>. Tabla
+      resumida (Tarea 2d, 10 amenazas): <a href="docs/TAREA_2D_REVISION_SEGURIDAD.md">docs/TAREA_2D_REVISION_SEGURIDAD.md</a>.
+    </p>
+    <div class="tabla-wrap">
+      <table>
+        <tr><th>Amenaza</th><th>Mitigación</th><th>Estado</th></tr>
+        <tr><td>Contraseñas en texto plano</td><td>Hash bcrypt (10 rounds), mínimo 8 caracteres</td><td><span class="badge ok">Verificado en vivo</span></td></tr>
+        <tr><td>SQL Injection</td><td>100% consultas parametrizadas — probado con inyección real</td><td><span class="badge ok">Verificado en vivo</span></td></tr>
+        <tr><td>Acceso no autorizado a admin</td><td><code>requireAdmin</code> en toda ruta de escritura</td><td><span class="badge ok">Verificado en vivo</span></td></tr>
+        <tr><td>Catálogo visible sin sesión</td><td><code>requireLogin</code> en rutas de catálogo</td><td><span class="badge ok">Corregido</span></td></tr>
+        <tr><td>Subida de archivos maliciosos</td><td>Whitelist de extensión, límite 5 MB, nombre generado</td><td><span class="badge parcial">Riesgo residual: sin validar MIME real</span></td></tr>
+        <tr><td>Mensajes de error con detalle interno</td><td>Middleware de error centralizado, nunca reenvía <code>err.message</code></td><td><span class="badge ok">Corregido</span></td></tr>
+        <tr><td><code>library_user</code> con privilegios excesivos</td><td>Solo SELECT/INSERT/UPDATE/DELETE, sin DDL</td><td><span class="badge ok">Corregido en GCP real</span></td></tr>
+        <tr><td>Node expuesto directo a Internet</td><td><code>HOST=127.0.0.1</code> por defecto + firewall cerrado</td><td><span class="badge ok">Corregido en GCP real</span></td></tr>
+        <tr><td>Segundo Administrador</td><td>Índice único parcial en la base de datos</td><td><span class="badge ok">Verificado en vivo</span></td></tr>
+        <tr><td>Secretos en el repositorio</td><td><code>.env</code> excluido por <code>.gitignore</code> en todo momento</td><td><span class="badge ok">Verificado</span></td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 10. Pruebas -->
+<section class="bloque" id="pruebas">
+  <div class="container">
+    <h2><span class="num">10</span> Plan y resultados de pruebas</h2>
+    <p class="lead">
+      Matriz completa: <a href="docs/TEST_PLAN.md">docs/TEST_PLAN.md</a> — 36 casos en 10 categorías (mínimo pedido: 15).
+    </p>
+    <div class="grid-cards">
+      <div class="card"><h4>25</h4><p>casos con evidencia real de ejecución (local + instancia GCP)</p></div>
+      <div class="card"><h4>10</h4><p>verificados por revisión de código, no requieren infraestructura adicional</p></div>
+      <div class="card"><h4>1</h4><p>documenta deliberadamente un riesgo residual no resuelto</p></div>
+    </div>
+    <h3>Pruebas negativas de integridad (con el error real de PostgreSQL)</h3>
+    <ul>
+      <li>ISBN duplicado → <code>duplicate key value violates unique constraint "libros_isbn_key"</code></li>
+      <li>Stock negativo → <code>viola la restricción "check" "libros_stock_check"</code></li>
+      <li>Precio negativo → <code>viola la restricción "check" "libros_precio_check"</code></li>
+      <li>FK inexistente → <code>viola la llave foránea "libros_formato_id_fkey"</code></li>
+      <li>Eliminar autor en uso → <code>violates RESTRICT setting of foreign key constraint</code></li>
+      <li>Segundo administrador → <code>duplicate key value violates unique constraint "ux_un_solo_administrador"</code></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 11. Despliegue -->
+<section class="bloque" id="despliegue">
+  <div class="container">
+    <h2><span class="num">11</span> Despliegue con reverse proxy (NGINX)</h2>
+    <p class="lead">Detalle completo: <a href="docs/GCP_COMMANDS.md">docs/GCP_COMMANDS.md</a>, sección 5.</p>
+    <p>
+      Node corre como servicio <code>systemd</code> (<a href="docs/web-monolito.service">docs/web-monolito.service</a>)
+      escuchando solo en <code>127.0.0.1:3000</code>. NGINX publica <code>/library</code>
+      (<a href="docs/nginx-libreria.conf">docs/nginx-libreria.conf</a>) reescribiendo, con <code>proxy_redirect</code>
+      y <code>sub_filter</code>, tanto las redirecciones como los enlaces del HTML — la aplicación no necesitó
+      ningún cambio de código para funcionar bajo el prefijo.
+    </p>
+    <h3>Verificación desde un cliente externo real</h3>
+    <div class="tabla-wrap">
+      <table>
+        <tr><th>Prueba</th><th>Resultado</th></tr>
+        <tr><td><code>GET /</code></td><td>302 → <code>/library/</code></td></tr>
+        <tr><td><code>GET /library/</code></td><td>200, enlaces ya con el prefijo</td></tr>
+        <tr><td><code>POST /library/login</code> (login real)</td><td>302 → <code>/library/</code>, cookie de sesión válida</td></tr>
+        <tr><td><code>GET /library/libros</code> con sesión</td><td>200, 32 libros listados</td></tr>
+        <tr><td><code>GET :3000/</code> directo, desde fuera</td><td>Sin respuesta — puerto no expuesto</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 12. Galería -->
+<section class="bloque" id="galeria">
+  <div class="container">
+    <h2><span class="num">12</span> Galería de evidencias</h2>
+    <div class="aviso">
+      <strong>Pendiente de completar.</strong> Las carpetas de <code>evidencias/</code> ya están creadas siguiendo
+      <a href="docs/EVIDENCE_GUIDE.md">docs/EVIDENCE_GUIDE.md</a>; faltan las capturas de pantalla reales
+      (consola de GCP, terminal, navegador) para reemplazar los recuadros de abajo.
+    </div>
+
+    <div class="galeria-grupo">
+      <h3>Infraestructura GCP</h3>
+      <div class="galeria-grid">
+        <div class="galeria-item"><div class="placeholder">evidencias/04-infraestructura-gcp/<br>01-gcloud-crear-instancia.png</div><div class="cap">Instancia <code>integracion</code> corriendo en Compute Engine</div></div>
+        <div class="galeria-item"><div class="placeholder">evidencias/04-infraestructura-gcp/<br>03-firewall-reglas.png</div><div class="cap">Firewall final: solo 22, 80, ICMP e interno</div></div>
+      </div>
+    </div>
+
+    <div class="galeria-grupo">
+      <h3>Base de datos</h3>
+      <div class="galeria-grid">
+        <div class="galeria-item"><div class="placeholder">evidencias/05-base-datos/<br>10-prueba-segundo-admin.png</div><div class="cap">Error real de PostgreSQL al intentar crear un segundo administrador</div></div>
+        <div class="galeria-item"><div class="placeholder">evidencias/05-base-datos/<br>13-permiso-denegado-ddl.png</div><div class="cap"><code>library_user</code> sin privilegio DDL, confirmado en la instancia real</div></div>
+      </div>
+    </div>
+
+    <div class="galeria-grupo">
+      <h3>Aplicación</h3>
+      <div class="galeria-grid">
+        <div class="galeria-item"><div class="placeholder">evidencias/07-implementacion/<br>01-catalogo.png</div><div class="cap">Catálogo con los 32 libros del seed</div></div>
+        <div class="galeria-item"><div class="placeholder">evidencias/07-implementacion/<br>03-detalle-cloud-computing.png</div><div class="cap">Ficha del libro de Cloud Computing con sus 10 conceptos</div></div>
+      </div>
+    </div>
+
+    <div class="galeria-grupo">
+      <h3>Despliegue</h3>
+      <div class="galeria-grid">
+        <div class="galeria-item"><div class="placeholder">evidencias/11-despliegue/<br>03-acceso-externo.png</div><div class="cap">Navegador externo accediendo a <code>/library</code> vía NGINX</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 13. Decisiones de ingeniería -->
+<section class="bloque" id="decisiones">
+  <div class="container">
+    <h2><span class="num">13</span> Decisiones de ingeniería, problemas encontrados y soluciones</h2>
+    <p class="lead">
+      Registro completo con 19 decisiones formales: <a href="docs/ENGINEERING_DECISIONS.md">docs/ENGINEERING_DECISIONS.md</a>.
+    </p>
+    <h3>Bugs reales encontrados solo al desplegar (no visibles revisando el código)</h3>
+    <ul>
+      <li><strong>Sintaxis SQL inválida</strong> en el seed multi-fila — <code>VALUES 'a','b'</code> en vez de <code>VALUES ('a'),('b')</code></li>
+      <li><strong>Placeholder de contraseña con "ñ"</strong> causaba error de codificación UTF-8 al autenticarse</li>
+      <li><strong><code>HOST</code> por defecto <code>0.0.0.0</code></strong> en <code>server.js</code> — exponía Node a toda la red</li>
+      <li><strong>3 vulnerabilidades de <code>npm audit</code></strong> en la cadena <code>bcrypt → tar</code> — resuelto actualizando a bcrypt 6.0.0</li>
+      <li><strong><code>CALL</code> de PostgreSQL no acepta subconsultas</strong> como argumento directo — corregido con la técnica <code>\gset</code></li>
+      <li><strong>Firewall con el puerto 3000 abierto a Internet</strong>, contradiciendo el requisito del ejercicio</li>
+    </ul>
+    <p>Cada uno documentado con: necesidad → alternativas → decisión → riesgo → evidencia de validación.</p>
+  </div>
+</section>
+
+<!-- 14. Uso de IA -->
+<section class="bloque" id="ia">
+  <div class="container">
+    <h2><span class="num">14</span> Uso documentado de Inteligencia Artificial</h2>
+    <p class="lead">Se usó Claude Code (Anthropic) como asistente de ingeniería a lo largo de todo el ejercicio.</p>
+    <div class="lista-archivos">
+      <li><a href="docs/PROMPT_MAESTRO_IA.md">docs/PROMPT_MAESTRO_IA.md</a><span>Plantilla de prompt disciplinado + ejemplo real con el prompt exacto conservado</span></li>
+      <li><a href="docs/AI_PROMPT_HISTORY.md">docs/AI_PROMPT_HISTORY.md</a><span>Historial de las interacciones significativas: pedido, respuesta, archivos, riesgo, prueba, resultado</span></li>
+      <li><a href="docs/AI_CHANGELOG.md">docs/AI_CHANGELOG.md</a><span>Changelog cronológico de cada cambio hecho con asistencia de IA</span></li>
+    </div>
+    <p>
+      La IA se usó como herramienta de ingeniería, no como sustituto del análisis: cada cambio se verificó (con
+      <code>node -c</code>, pruebas contra bases de datos reales, o smoke tests HTTP) antes de darse por bueno, y
+      cada decisión de arquitectura, seguridad o modelo de datos quedó registrada con su razonamiento — no solo el
+      resultado.
+    </p>
+  </div>
+</section>
+
+<!-- 15. Conclusiones -->
+<section class="bloque" id="conclusiones">
+  <div class="container">
+    <h2><span class="num">15</span> Conclusiones y mejoras futuras</h2>
+    <p>
+      El sistema cumple los requisitos funcionales y no funcionales del ejercicio: CRUD completo sobre un modelo
+      normalizado hasta 4FN, autenticación y autorización por rol, protección contra las amenazas más comunes de
+      una aplicación web (SQL Injection, subida de archivos, exposición de secretos, elevación de privilegios), y
+      un despliegue real y verificado en infraestructura GCP con reverse proxy.
+    </p>
+    <p>
+      La disciplina de <strong>probar antes de dar por bueno</strong> resultó determinante: varios bugs reales
+      (ver sección 13) solo aparecieron al ejecutar contra una base de datos y un servidor reales, nunca durante la
+      sola revisión del código — una lección directa sobre los límites de la revisión estática.
+    </p>
+    <h3>Mejoras futuras razonables</h3>
+    <ul>
+      <li>Validación de imágenes por firma binaria (magic bytes), no solo por extensión</li>
+      <li>HTTPS/TLS en el reverse proxy</li>
+      <li>Paginación del catálogo si crece más allá de unas pocas decenas de libros</li>
+      <li>Store de sesión compartido (Redis/Postgres) si el sistema llegara a escalar a múltiples instancias</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 16. Descargas -->
+<section class="bloque" id="descargas">
+  <div class="container">
+    <h2><span class="num">16</span> Descargas</h2>
+    <p class="lead">Todos los artefactos del ejercicio, sin secretos ni <code>node_modules</code>.</p>
+    <ul class="lista-archivos">
+      <li><a href="descargas/ejercicio02.tar.gz">descargas/ejercicio02.tar.gz</a><span>Proyecto completo comprimido</span></li>
+      <li><a href="docs/">docs/</a><span>Los 17 documentos de ingeniería (requisitos, decisiones, seguridad, pruebas, reporte técnico...)</span></li>
+      <li><a href="sql/">sql/</a><span>Scripts SQL 00-06 (esquema, seed, stored procedures, triggers, vista)</span></li>
+      <li><a href="docs/REPORTE_TECNICO.md">docs/REPORTE_TECNICO.md</a><span>Reporte técnico completo — amarra todo el trabajo</span></li>
+    </ul>
+  </div>
+</section>
+
+<footer class="pie">
+  <div class="container">
+    <p>
+      <strong>URL de este ejercicio:</strong> https://ubiquitous.udem.edu/~iac-604775/ejercicio02/<br>
+      <strong>Fecha de última actualización:</strong> 01/09/2026 ·
+      <strong>Versión:</strong> 1.0
+    </p>
+    <p>Humberto Alejandro Vargas Sánchez · 604775 · Universidad de Monterrey · 2026</p>
+  </div>
+</footer>
+
+</body>
+</html>
