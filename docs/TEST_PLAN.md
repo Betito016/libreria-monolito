@@ -67,9 +67,10 @@ Todas ejecutadas directamente por `psql` como `library_user` contra la instancia
 | ID | Requisito | Caso | Resultado esperado | Resultado observado / Evidencia | Estado |
 |----|-----------|------|----------------------|-----------------------------------|--------|
 | TC-21 | Control 1 (`SECURITY_REVIEW.md`) | `POST /registro` con password de 6 caracteres. | Flash "La contraseña debe tener al menos 8 caracteres.", cuenta NO creada. | ✓ Ejecutada: `POST /registro` con `password=abc123` → `302` a `/registro`; `SELECT COUNT(*) FROM usuarios WHERE email='corta@test.test'` devolvió `0`. | ✓ |
-| TC-22 | Control 7 (`SECURITY_REVIEW.md`) | Admin autenticado. `POST /libros/:id/imagenes` con un archivo `.exe` renombrado `.png`. | **Riesgo residual conocido:** el filtro actual solo mira la extensión del nombre, así que este caso **pasaría** el filtro indebidamente. | ✗ No ejecutada esta sesión (no se probó subida de imágenes); sigue documentando un riesgo residual real y no resuelto (brecha #5 en `SECURITY_REVIEW.md`). | ✗ |
+| TC-22 | Control 7 (`SECURITY_REVIEW.md`) | Admin autenticado. `POST /libros/:id/imagenes` con un archivo `.exe` renombrado `.png`. | **Riesgo residual conocido:** el filtro actual solo mira la extensión del nombre, así que este caso **pasaría** el filtro indebidamente. | ✗ No ejecutada (el caso positivo de TC-37 sí se probó); sigue documentando un riesgo residual real y no resuelto (brecha #5 en `SECURITY_REVIEW.md`). | ✗ |
 | TC-23 | RF-10 | Admin autenticado. `POST /libros/:id/imagenes` con extensión fuera de la whitelist. | Rechazado por `fileFilter`. | ~ `middlewares/upload.js:24-28`. No ejecutada esta sesión. | ~ |
 | TC-24 | RF-10 | Admin autenticado. Subida de una imagen de 8 MB. | Rechazada por `limits.fileSize` (máx. 5 MB). | ~ `middlewares/upload.js:33`. No ejecutada esta sesión. | ~ |
+| TC-37 | RF-10 / RF-11 | Admin autenticado (sesión real). `POST /libros/17/imagenes` con un PNG real (`multipart/form-data`, campo `es_principal=on`), luego `POST .../imagenes/:id/eliminar`, luego `POST .../imagenes/:id/principal` sobre la imagen original. | Imagen subida con nombre generado por el servidor; marcada como portada (y la anterior deja de serlo); tras eliminarla, "marcar como principal" sobre otra imagen funciona. | ✓ Ejecutada contra la instancia GCP real vía `curl`: archivo subido como `/uploads/libro-17-<timestamp>.png` (nunca `udem-logo.png`, el nombre original); confirmado en BD que `es_principal` se movió correctamente; imagen servida con `200` a través de NGINX (`/library/uploads/...`); eliminación confirmada en BD. **Hallazgo menor (no crítico):** al eliminar la imagen marcada como portada, ninguna otra se promueve automáticamente — el libro queda sin portada hasta marcar una manualmente. Documentado como mejora futura en `docs/ENGINEERING_DECISIONS.md`. | ✓ |
 
 ## 6. Pruebas de relaciones libro-autor, libro-género y libro-concepto
 
@@ -112,14 +113,15 @@ Todas ejecutadas directamente por `psql` como `library_user` contra la instancia
 
 ## Resumen de cobertura
 
-- **36 casos** (mínimo pedido: 15), cubriendo las 9 categorías exigidas por el punto 18 del ejercicio más una
+- **37 casos** (mínimo pedido: 15), cubriendo las 9 categorías exigidas por el punto 18 del ejercicio más una
   categoría adicional (10) para los artefactos de base de datos.
-- **25 aprobados con evidencia real**: 24 obtenidas el 2026-08-31 contra una instancia PostgreSQL 18 local y la
+- **27 aprobados con evidencia real**: 24 obtenidas el 2026-08-31 contra una instancia PostgreSQL 18 local y la
   aplicación corriendo de verdad (login, catálogo, CRUD con relaciones, autorización por rol, las 6 pruebas
-  negativas de integridad, inyección SQL, trigger, vista y ambos stored procedures), más TC-29 (reverse proxy)
-  obtenida el 2026-09-01 contra la instancia GCP real (`integracion`) desde un cliente externo — ver
-  `docs/GCP_COMMANDS.md`.
-- **10 verificados solo por revisión de código** — no requieren infraestructura adicional, simplemente no se
+  negativas de integridad, inyección SQL, trigger, vista y ambos stored procedures); TC-29 (reverse proxy) y
+  TC-37 (subida/eliminación/portada de imágenes) obtenidas el 2026-09-01 contra la instancia GCP real
+  (`integracion`) — la segunda desde un cliente externo real vía `curl`, con verificación en base de datos y a
+  través de NGINX — ver `docs/GCP_COMMANDS.md`.
+- **9 verificados solo por revisión de código** — no requieren infraestructura adicional, simplemente no se
   ejecutaron en esta pasada (login con password incorrecto, logout, búsqueda por `?q=`, ISBN duplicado por HTTP,
   eliminación de libro por HTTP, CRUD de catálogos por HTTP, cambio de rol/activo exitoso, subida de imagen con
   extensión inválida/tamaño excedido).

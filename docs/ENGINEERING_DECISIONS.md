@@ -173,7 +173,16 @@ Este archivo se actualiza conforme avanza el ejercicio (incluye ya las decisione
   `docs/SECURITY_REVIEW.md` y, si el tiempo lo permite, mitigar con una librería de sniffing de tipo (`file-type`).
 - **Evidencia de validación:** `apps/web-monolito/src/middlewares/upload.js` (filtro de extensión, límite 5 MB,
   `filename` con `Date.now()`); tabla `imagenes` en `db/01_schema.sql:145-153` solo con `url_imagen` (texto), sin
-  columna binaria.
+  columna binaria. **Verificado en vivo el 2026-09-01** contra la instancia GCP real: subida de un PNG real vía
+  `curl` (`multipart/form-data`), archivo guardado como `/uploads/libro-17-<timestamp>.png` (nunca el nombre
+  original), servido correctamente a través de NGINX bajo `/library/uploads/...` (ver TC-37 en
+  `docs/TEST_PLAN.md`).
+- **Mejora futura menor detectada en esa misma prueba (no crítica, no es un riesgo de seguridad):** al eliminar
+  la imagen marcada como `es_principal`, ninguna otra imagen del libro se promueve automáticamente — el libro
+  queda sin portada hasta que un administrador marque otra manualmente. El índice único parcial sigue siendo
+  correcto (permite 0 o 1 fila con `es_principal = TRUE`, nunca más de 1), así que no hay inconsistencia de
+  datos; es solo una mejora de UX pendiente (reasignar la imagen más antigua restante como principal dentro de
+  `eliminarImagen()` si no queda ninguna marcada).
 
 ---
 

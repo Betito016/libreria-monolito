@@ -6,6 +6,18 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["-y", "serve", "site", "-l", "4173"],
       "port": 4173
+    },
+    {
+      "name": "pagina-ubiquitous",
+      "runtimeExecutable": "C:\\Users\\ALEX1\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "runtimeArgs": ["-m", "http.server", "4174", "--directory", "C:\\Integracion\\pagina ubiquitous"],
+      "port": 4174
+    },
+    {
+      "name": "pagina-ubiquitous-v2",
+      "runtimeExecutable": "C:\\Users\\ALEX1\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "runtimeArgs": ["-m", "http.server", "4175", "--directory", "C:\\Integracion\\pagina ubiquitous v2"],
+      "port": 4175
     }
   ]
 }
