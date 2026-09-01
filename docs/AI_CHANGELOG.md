@@ -76,13 +76,36 @@ cambió y *cuándo*.
 - Creado `docs/REPORTE_TECNICO.md` (Parte 9, punto 21) — sintetiza y enlaza los 12 puntos exigidos, sin duplicar
   el contenido detallado de los demás documentos.
 
+## 2026-09-01
+
+### Despliegue real en la instancia GCP (`integracion`, proyecto `integracion-505802`)
+- Revisado el estado real de la instancia (`gcloud compute instances describe`, firewall) antes de tocar nada;
+  confirmado con el usuario antes de arrancarla (genera costo) y antes de borrar la base de datos vieja.
+- Encontradas y corregidas 2 reglas de firewall duplicadas abriendo el puerto 3000 a Internet, más una regla RDP
+  sin uso — eliminadas después de verificar el reverse proxy funcionando.
+- `library_db`/`library_user` (con `OWNER` incorrecto, de una carga anterior) eliminados y recreados desde cero
+  con `db/00`…`06`, en el mismo orden y con los mismos roles ya verificados en local. Confirmado en la instancia
+  real que `library_user` no puede hacer DDL.
+- Corregido `apps/web-monolito/src/server.js` — `HOST` por defecto era `'0.0.0.0'` (exponía Node a toda la red);
+  cambiado a `'127.0.0.1'`. Brecha real encontrada solo al desplegar, no visible en local (commit `adf4456`).
+- Actualizado `bcrypt` a `6.0.0` para resolver 3 vulnerabilidades de `npm audit` (2 altas, 1 crítica) en la cadena
+  `bcrypt → @mapbox/node-pre-gyp → tar`; verificado que `hash()`/`compare()` no cambiaron de comportamiento
+  (commit `24199b9`).
+- Configurado `web-monolito.service` (systemd) y `/etc/nginx/conf.d/libreria.conf` (NGINX) publicando `/library`
+  con `proxy_redirect` + `sub_filter` — sin modificar ningún controlador ni vista EJS. Verificado end-to-end desde
+  un cliente externo real (login, sesión, catálogo).
+- Creados `docs/GCP_COMMANDS.md`, `docs/nginx-libreria.conf`, `docs/web-monolito.service`; actualizados
+  `docs/SECURITY_REVIEW.md` (controles 9-11), `docs/TEST_PLAN.md` (TC-29, TC-32), `docs/REQUIREMENTS.md` (RNF-08)
+  y `docs/REPORTE_TECNICO.md` (secciones 10-11) con la evidencia real obtenida.
+
 ---
 
 ## Pendiente de registrar en próximas sesiones
 
-- Repetir la carga de `db/00`…`06` en la instancia GCP real (hoy solo verificada en local).
-- `docs/GCP_COMMANDS.md` — comandos reales de creación de la instancia (Parte 4).
-- Configuración del reverse proxy Apache/NGINX (Parte 8).
-- Diagramas (`docs/ARCHITECTURE_MONOLITHIC.png`, `docs/DB_DESIGN_ER_4FN.png`) y `docs/NORMALIZATION_4FN.xlsx`.
-- Reporte técnico y sitio web final (`index.html`) para publicar en `ubiquitous.udem.edu` (Parte 9 y 10).
-- Tareas de Trabajo en Casa 2a (normalización), 2c (evaluación arquitectónica), 2d (tabla resumida de seguridad).
+- Configurar una *deploy key* de GitHub en la instancia para que `git pull` funcione ahí directamente (hoy se
+  sincronizó el código por `scp`).
+- Repetir en la instancia GCP las 6 pruebas negativas de integridad y la verificación del libro de Cloud
+  Computing (hoy con evidencia solo de la instancia local).
+- Capturar las evidencias visuales siguiendo `docs/EVIDENCE_GUIDE.md`.
+- Sitio web final (`index.html`) para publicar en `ubiquitous.udem.edu` (Parte 10).
+- Tarea de Trabajo en Casa 2b ya cubierta por `docs/TEST_PLAN.md`; 2a, 2c y 2d ya completas.

@@ -114,19 +114,24 @@ revisión de código. Incluye pruebas funcionales, de autorización por los tres
 el mensaje de error real de PostgreSQL en cada una), de validación de campos, de las relaciones M:N y M:N con
 atributo, de inyección SQL, y de los artefactos de base de datos nuevos (vista, stored procedures, trigger).
 
-## 10. Despliegue mediante Apache/NGINX
+## 10. Despliegue mediante NGINX
 
-**Pendiente de ejecución** — documentado como plan en `README.md` (sección de reverse proxy con NGINX) pero no
-verificado contra un reverse proxy real todavía. La aplicación ya está preparada para ello: escucha en un puerto
-configurable vía `.env` (pensado para bindear solo a `127.0.0.1`), y el `README.md` incluye la configuración de
-NGINX de referencia. Falta: montar el proxy en la instancia GCP real, verificar rutas estáticas/formularios/
-sesiones/uploads bajo el prefijo `/library`, y capturar la evidencia correspondiente (ver
-`docs/EVIDENCE_GUIDE.md`, carpeta `11-despliegue/`).
+**Verificado en vivo el 2026-09-01** contra la instancia GCP real (`integracion`, IP `34.67.65.195`) — ver el
+detalle completo de comandos en [`docs/GCP_COMMANDS.md`](GCP_COMMANDS.md). Node corre como servicio `systemd`
+(`web-monolito.service`) escuchando solo en `127.0.0.1:3000` (confirmado que el puerto no responde desde fuera
+del servidor). NGINX publica `/library` reescribiendo, con `proxy_redirect` y `sub_filter`, tanto la cabecera
+`Location` de las redirecciones como los `href`/`action`/`src` del HTML — la aplicación no necesitó ningún cambio
+de código para funcionar bajo el prefijo (ver `docs/nginx-libreria.conf`). Probado desde un cliente externo real:
+navegación, login, sesión y catálogo funcionan correctamente bajo `http://<IP>/library/`. El firewall de GCP se
+limpió después de verificar el proxy (se encontró y cerró el puerto 3000 expuesto a Internet, que contradecía
+directamente este mismo requisito — ver control 10-11 de `docs/SECURITY_REVIEW.md`).
 
 ## 11. Limitaciones actuales, riesgos técnicos y posibles mejoras
 
-- La instancia GCP real del usuario predata esta sesión de trabajo y todavía no tiene el esquema/privilegios
-  corregidos — es el bloqueante principal para dar por cerradas las Partes 4, 7 (evidencia en el entorno real) y 8.
+- La instancia GCP real ya tiene el esquema, privilegios, aplicación y reverse proxy corregidos y verificados
+  (2026-09-01, ver `docs/GCP_COMMANDS.md`). Falta repetir ahí las 6 pruebas negativas de integridad y la
+  verificación del libro de Cloud Computing (hoy solo con evidencia de la instancia local), y capturar las
+  evidencias visuales del `docs/EVIDENCE_GUIDE.md`.
 - Validación de imágenes solo por extensión, no por firma binaria (riesgo de seguridad residual documentado).
 - `SESSION_SECRET` tiene un valor de respaldo hardcodeado si falta la variable de entorno — aceptable en
   desarrollo, a revisar antes de producción.

@@ -89,7 +89,7 @@ Todas ejecutadas directamente por `psql` como `library_user` contra la instancia
 
 | ID | Requisito | Caso | Resultado esperado | Resultado observado / Evidencia | Estado |
 |----|-----------|------|----------------------|-----------------------------------|--------|
-| TC-29 | RNF-08 / Parte 8 | Node escuchando en `127.0.0.1:3000`; Apache/NGINX configurado para `/library`. `GET http://IP_DEL_SERVIDOR/library`. | La app responde igual que en local bajo el prefijo `/library`. | ✗ No ejecutable: la instancia GCP real del usuario todavía no tiene el esquema/proxy actualizados (Parte 4 y Parte 8 pendientes). Lo probado esta sesión fue contra PostgreSQL **local**, no GCP. | ✗ |
+| TC-29 | RNF-08 / Parte 8 | Node escuchando en `127.0.0.1:3000`; NGINX configurado para `/library`. `GET http://IP_DEL_SERVIDOR/library`. | La app responde igual que en local bajo el prefijo `/library`. | ✓ Ejecutada el 2026-09-01 desde una máquina externa real (no desde dentro del servidor) contra la instancia GCP `integracion` (IP `34.67.65.195`): `GET /` → `302` a `/library/`; `GET /library/` → `200` con todos los `href`/`action`/`src` correctamente reescritos con el prefijo; login real (`POST /library/login`) → `302` a `/library/` con cookie de sesión válida; `GET /library/libros` con esa sesión → `200`, 32 libros, enlaces internos con el prefijo correcto. `GET :3000/` directo → sin respuesta (puerto ya no expuesto, ver `docs/GCP_COMMANDS.md` sección 5). | ✓ |
 
 ## 9. Pruebas básicas de navegación y usabilidad
 
@@ -102,7 +102,7 @@ Todas ejecutadas directamente por `psql` como `library_user` contra la instancia
 
 | ID | Requisito | Caso | Resultado esperado | Resultado observado / Evidencia | Estado |
 |----|-----------|------|----------------------|-----------------------------------|--------|
-| TC-32 | RNF-03 | `db/06_views.sql` cargado. `SELECT titulo, autores, formato FROM vista_catalogo_libros ORDER BY titulo LIMIT 5;` como `library_user`. | Devuelve filas con autores concatenados y portada, sin error de permisos. | ✓ Ejecutada: devolvió 5 filas correctas (incluida "Antología del cuento latinoamericano" con 3 autores concatenados). | ✓ |
+| TC-32 | RNF-03 | `db/06_views.sql` cargado. `SELECT titulo, autores, formato FROM vista_catalogo_libros ORDER BY titulo LIMIT 5;` como `library_user`. | Devuelve filas con autores concatenados y portada, sin error de permisos. | ✓ Ejecutada en local (5 filas correctas) **y repetida en la instancia GCP real** (`integracion`) el 2026-09-01: 3 filas correctas vía `psql` como `library_user`. | ✓ |
 | TC-33 | RF-05 | App corriendo con `vista_catalogo_libros` ya creada. `GET /libros` con sesión real. | El catálogo carga con los 32 libros del seed. | ✓ Ejecutada: `GET /libros` devolvió HTML con 32 coincidencias de `tarjeta-libro`, incluida la del libro de Cloud Computing. | ✓ |
 | TC-34 | RF-08 | `CALL sp_asignar_autores_libro(:libro_id, ARRAY[:autor_id])` vía `psql` (con `\gset`, no subconsulta directa — ver nota en `db/04_stored_procedures.sql`) tras vaciar la asignación previa. | Exactamente una fila con el autor esperado. | ✓ Ejecutada por `psql` directo (1 fila, autor correcto) **y** indirectamente por la app tras conectar D-17 (`libros.model.js` ahora llama a este procedimiento): ver TC-25. | ✓ |
 | TC-35 | RF-08 | `CALL sp_asignar_generos_libro(:libro_id, ARRAY[]::INTEGER[])`. | La tabla `libro_genero` queda sin filas para ese libro. | ✓ Ejecutada por `psql` directo (`generos_restantes = 0`) **y** por la app en TC-25 (edición que dejó el libro sin géneros). | ✓ |
@@ -114,17 +114,20 @@ Todas ejecutadas directamente por `psql` como `library_user` contra la instancia
 
 - **36 casos** (mínimo pedido: 15), cubriendo las 9 categorías exigidas por el punto 18 del ejercicio más una
   categoría adicional (10) para los artefactos de base de datos.
-- **24 aprobados con evidencia real** obtenida el 2026-08-31 contra una instancia PostgreSQL 18 local y la
+- **25 aprobados con evidencia real**: 24 obtenidas el 2026-08-31 contra una instancia PostgreSQL 18 local y la
   aplicación corriendo de verdad (login, catálogo, CRUD con relaciones, autorización por rol, las 6 pruebas
-  negativas de integridad, inyección SQL, trigger, vista y ambos stored procedures).
-- **11 verificados solo por revisión de código** — no requieren infraestructura adicional, simplemente no se
+  negativas de integridad, inyección SQL, trigger, vista y ambos stored procedures), más TC-29 (reverse proxy)
+  obtenida el 2026-09-01 contra la instancia GCP real (`integracion`) desde un cliente externo — ver
+  `docs/GCP_COMMANDS.md`.
+- **10 verificados solo por revisión de código** — no requieren infraestructura adicional, simplemente no se
   ejecutaron en esta pasada (login con password incorrecto, logout, búsqueda por `?q=`, ISBN duplicado por HTTP,
   eliminación de libro por HTTP, CRUD de catálogos por HTTP, cambio de rol/activo exitoso, subida de imagen con
   extensión inválida/tamaño excedido).
-- **2 pendientes de infraestructura real:** TC-22 (documenta un riesgo residual de seguridad no resuelto, no una
-  falta de ejecución) y TC-29 (reverse proxy — depende de la instancia GCP real, no de la instancia local usada
-  hoy).
+- **1 pendiente deliberadamente:** TC-22 documenta un riesgo residual de seguridad no resuelto (validación de
+  imágenes solo por extensión), no una falta de ejecución.
 
-**Siguiente paso natural:** repetir esta misma carga (`db/00`…`06`) contra la instancia GCP real del usuario (que
-sigue con el esquema anterior a esta sesión) y volver a correr al menos TC-15 a TC-20 y TC-27 ahí, para que la
-evidencia quede sobre el entorno que realmente se va a entregar — no solo sobre PostgreSQL local.
+**Siguiente paso natural:** el esquema, seed, stored procedures, triggers, vista, aplicación y reverse proxy ya
+están cargados y verificados en la instancia GCP real (`integracion`) — ver `docs/GCP_COMMANDS.md` para el detalle
+completo. Falta repetir ahí específicamente TC-15 a TC-20 (pruebas negativas de integridad) y TC-27 (conceptos de
+Cloud Computing), que hoy solo tienen evidencia de la instancia local, y capturar las evidencias visuales
+siguiendo `docs/EVIDENCE_GUIDE.md`.

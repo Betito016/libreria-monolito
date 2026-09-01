@@ -178,10 +178,11 @@ conocida · ✗ Control ausente.
   `permitir-tcp-3000`) — contradice directamente el punto 19 de la Parte 8 (ver control 10); y el puerto 3389
   (RDP) estaba abierto a `0.0.0.0/0` sin ningún servicio Windows escuchando ahí (la instancia es CentOS Linux) —
   regla sin propósito.
-- **Estado:** ~ Pendiente de limpiar — identificado el 2026-09-01, se cerrará una vez que el reverse proxy
-  (Apache/NGINX bajo `/library`) esté configurado y verificado funcionando (para no cerrar el único acceso HTTP
-  directo a la app antes de tener el proxy listo). Plan: eliminar las 2 reglas de puerto 3000 y la de RDP,
-  dejando solo 22 (SSH), 80 (HTTP) y, si se agrega TLS más adelante, 443.
+- **Estado:** ✓ Corregido y verificado el 2026-09-01: una vez confirmado que el reverse proxy NGINX bajo
+  `/library` funcionaba end-to-end desde un cliente externo (ver `docs/GCP_COMMANDS.md`, sección 5), se
+  eliminaron las 2 reglas de puerto 3000 y la de RDP (`gcloud compute firewall-rules delete`). El firewall final
+  solo permite 22 (SSH), 80 (HTTP), ICMP y tráfico interno de red — confirmado con `gcloud compute firewall-rules
+  list` y una prueba real de que la app sigue respondiendo en `http://<IP>/library/` tras la limpieza.
 
 ## 12. No publicar contraseñas, `.env`, claves SSH, tokens o cadenas de conexión en `ubiquitous.udem.edu`
 
@@ -211,7 +212,7 @@ conocida · ✗ Control ausente.
 | 7 | `library_user` es `OWNER` de la base (no mínimo privilegio) | `db/00_create_database.sql` + `db/01_schema.sql` | **Alta** | ✓ Corregido y verificado en la instancia GCP real (`integracion`) el 2026-09-01 |
 | 8 | Checklist de secretos antes de publicar `.tar.gz` | Al llegar a la Parte 10 | — | ✗ Pendiente hasta esa fase |
 | 9 | `HOST` por defecto era `0.0.0.0` (Node expuesto directo a Internet) | `src/server.js` | **Alta** | ✓ Corregido y verificado en GCP el 2026-09-01 (control 10) |
-| 10 | Puerto 3000 abierto a `0.0.0.0/0` en el firewall de GCP (2 reglas duplicadas) + regla RDP sin uso | Consola/`gcloud` de GCP | **Alta** | ~ Pendiente cerrar hasta que el reverse proxy esté verificado (control 11) |
+| 10 | Puerto 3000 abierto a `0.0.0.0/0` en el firewall de GCP (2 reglas duplicadas) + regla RDP sin uso | Consola/`gcloud` de GCP | **Alta** | ✓ Corregido y verificado 2026-09-01 (control 11) |
 
 Las 4 primeras brechas se corrigieron el mismo día que se detectaron por ser cambios pequeños y localizados (no
 tocan el modelo de datos ni cambian ningún contrato entre módulos), verificados con `node -c` en los 4 archivos

@@ -323,12 +323,38 @@ Este archivo se actualiza conforme avanza el ejercicio (incluye ya las decisione
   salidas); `git status` confirma los archivos tocados: `db/00_create_database.sql`, `db/02_seed_30_per_table.sql`,
   `db/04_stored_procedures.sql`, `README.md`, `libros.model.js`.
 
+## D-19. Publicar `/library` reescribiendo con NGINX (`sub_filter`/`proxy_redirect`), sin modificar la aplicación
+
+- **Necesidad/problema:** la aplicación genera todos sus enlaces, formularios y redirecciones como rutas
+  absolutas desde raíz (`href="/libros"`, `action="/logout"`, `res.redirect('/')`), sin conocer ningún prefijo.
+  El ejercicio exige publicarla bajo `/library` (Parte 8), y un `proxy_pass` simple habría dejado esos enlaces
+  rotos apuntando fuera del prefijo.
+- **Alternativas consideradas:**
+  1. Modificar cada controlador (`res.redirect`) y cada vista EJS (`href`/`action`/`src`) para que use un
+     `BASE_PATH` configurable, o montar toda la app bajo un `express.Router()` con ese prefijo.
+  2. Resolverlo enteramente en NGINX: `proxy_redirect` para la cabecera `Location` de las redirecciones, y
+     `sub_filter` para reescribir `href="/`, `action="/` y `src="/` en el cuerpo HTML de la respuesta.
+- **Decisión tomada:** opción 2.
+- **Justificación técnica:** la opción 1 significa tocar ~30-40 lugares del código (todo controlador que hace
+  `res.redirect`, toda vista EJS con un enlace o formulario) sin poder probar cada uno contra un entorno real
+  antes de esta sesión — exactamente el tipo de cambio amplio y difícil de verificar que se ha evitado a lo largo
+  de todo este trabajo. La opción 2 es una técnica estándar de reverse-proxy para aplicaciones que no conocen su
+  propio prefijo de montaje, no requiere tocar una sola línea de `apps/web-monolito/src`, y es reversible con
+  solo editar la configuración de NGINX.
+- **Riesgo o limitación:** `sub_filter` reescribe *cualquier* `href="/`, `action="/` o `src="/` en el HTML de
+  respuesta — si en el futuro se agregara un enlace externo escrito exactamente así (poco probable, ningún caso
+  actual lo hace) se reescribiría también por error. Tampoco reescribe URLs generadas dinámicamente por
+  JavaScript del lado del cliente (la app no tiene ninguna hoy). Documentado para que quien mantenga el proyecto
+  sepa por qué el prefijo funciona sin verlo en el código Node.
+- **Evidencia de validación:** verificado end-to-end desde un cliente externo real contra la instancia GCP:
+  navegación, login, sesión y catálogo funcionando bajo `http://<IP>/library/` con todos los enlaces/formularios
+  correctamente reescritos. Detalle completo en `docs/GCP_COMMANDS.md`, sección 5, y configuración versionada en
+  `docs/nginx-libreria.conf`.
+
 ## Decisiones pendientes de registrar
 
-- **D-09** — Elección de instancia GCP (Compute Engine, CentOS Stream 10: tamaño, región/zona, firewall) — Parte 4.
-  El usuario ya tiene una instancia funcionando desde antes de esta sesión; falta documentarla aquí y recargarla
-  con los scripts `db/00`…`06` ya verificados en local (ver D-18).
-- **D-11** — Apache/NGINX como reverse proxy bajo `/library` — Parte 8.
+- **D-11 (parcial)** — Apache/NGINX como reverse proxy bajo `/library`: la configuración base ya está hecha y
+  verificada (ver D-19); queda pendiente evaluar si agregar HTTPS/TLS, que el ejercicio no exige explícitamente.
 
 ## Historial de correcciones aplicadas
 
