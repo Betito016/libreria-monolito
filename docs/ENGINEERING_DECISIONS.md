@@ -343,7 +343,8 @@ test manual del servidor.
 | 2026-08-31 | Middleware de error final ya no reenvía `err.message` al usuario | `app.js` | D-08 / RNF-07 — evitar filtrar mensajes internos de PostgreSQL |
 | 2026-08-31 | Validación server-side de `libros` (ISBN/título/formato obligatorios; precio y stock numéricos ≥ 0; año entero positivo) antes del `INSERT`/`UPDATE` | `libros.controller.js` | Control 4 de `SECURITY_REVIEW.md` — no depender solo de los `CHECK` de la BD |
 | 2026-08-31 | Longitud mínima de contraseña (8 caracteres) en registro | `auth.controller.js` | Control 1 de `SECURITY_REVIEW.md` — política básica de contraseñas |
+| 2026-09-01 | `HOST` por defecto cambiado de `'0.0.0.0'` a `'127.0.0.1'` | `server.js` | Control 10 de `SECURITY_REVIEW.md` — detectado al desplegar en la instancia GCP real: sin `HOST` explícito en `.env`, Node quedaba expuesto a toda interfaz de red, violando la Parte 8, punto 19 |
 
 Quedan abiertas (deliberadamente no tocadas todavía, por ser de infraestructura o de mayor alcance): fallback
-hardcodeado de `SESSION_SECRET`, validación de MIME/magic-bytes en imágenes, y privilegios de `library_user`
-(D-13). Ver tabla de prioridades en `docs/SECURITY_REVIEW.md`.
+hardcodeado de `SESSION_SECRET`, validación de MIME/magic-bytes en imágenes, y cerrar el puerto 3000 en el
+firewall de GCP (pendiente hasta tener el reverse proxy verificado — control 11 de `docs/SECURITY_REVIEW.md`).

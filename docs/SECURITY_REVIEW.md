@@ -145,17 +145,45 @@ conocida · ✗ Control ausente.
   (`library_user`), **no** con el superusuario `postgres` — ver `config/db.js:11` y `README.md:40`.
 - **Evidencia:** `README.md:48-50` crea `library_user` como rol de login con contraseña, y `README.md:49`
   lo declara **`OWNER`** de `library_db`.
-- **Estado:** ~ Corregido y **verificado en vivo** el 2026-08-31 (ver D-15 y D-18 en
-  `docs/ENGINEERING_DECISIONS.md`): `db/00_create_database.sql` crea la base sin asignarla a `library_user`, y
-  `db/01_schema.sql` le otorga al final solo `SELECT, INSERT, UPDATE, DELETE` sobre las tablas y `USAGE, SELECT`
-  sobre las secuencias. Probado contra una instancia PostgreSQL 18 local: `library_user` puede operar con
-  filas normalmente pero un intento de `CREATE PROCEDURE` como ese rol falla con `ERROR: permiso denegado al
-  esquema public`, confirmando que no tiene privilegios de DDL. **No se puede marcar ✓ todavía** porque falta un
-  solo paso: la instancia GCP que el usuario ya tiene corriendo se cargó antes de esta corrección, con
-  `library_user` como `OWNER`; hay que volver a ejecutar `db/00_create_database.sql` + `db/01_schema.sql` ahí (o
-  revocar el `OWNER` manualmente) para que el control esté vigente en el entorno real, no solo en local.
+- **Estado:** ✓ Corregido y **verificado en la instancia GCP real** (`integracion`, proyecto `integracion-505802`)
+  el 2026-09-01: se recargó `db/00_create_database.sql` + `db/01_schema.sql` ahí (antes tenía `library_user` como
+  `OWNER`, igual que se predijo). Confirmado con el mismo experimento que en local: `library_user` puede leer
+  `vista_catalogo_libros` normalmente, pero `CREATE TABLE prueba_ddl (...)` con ese mismo rol falla con
+  `ERROR: permission denied for schema public`.
 
-## 10. No publicar contraseñas, `.env`, claves SSH, tokens o cadenas de conexión en `ubiquitous.udem.edu`
+## 10. Node.js no debe exponerse directo a Internet (Parte 8, punto 19)
+
+- **Amenaza:** que el proceso Node quede accesible desde cualquier IP de Internet sin pasar por el reverse proxy,
+  saltándose cualquier control (TLS, límites de tasa, etc.) que se configure ahí más adelante — y que el
+  enunciado prohíbe explícitamente ("La aplicación Node.js deberá escuchar en 127.0.0.1:3000 y no exponerse
+  directamente a Internet").
+- **Control aplicado:** `src/server.js` fija el host de escucha (`app.listen(PORT, HOST, ...)`) con
+  `HOST = process.env.HOST || '127.0.0.1'`.
+- **Estado:** ✓ Corregido el 2026-09-01. **Brecha real encontrada al desplegar en GCP** (no se habría visto solo
+  revisando el código en local): el valor por defecto de `HOST` era `'0.0.0.0'`, es decir, si la variable de
+  entorno `HOST` no se definía explícitamente, el proceso escuchaba en **todas** las interfaces de red — expuesto
+  directo a Internet en cuanto arrancara, combinado con la regla de firewall de GCP que además tenía el puerto
+  3000 abierto a `0.0.0.0/0` (ver control 11). Se cambió el valor por defecto a `'127.0.0.1'` (seguro por
+  defecto) y además se fija `HOST=127.0.0.1` explícitamente en el `.env` de la instancia GCP.
+- **Evidencia:** `src/server.js:5`; verificado en la instancia real que, tras el cambio, `curl` desde dentro del
+  servidor a `127.0.0.1:3000` responde pero un intento desde fuera (una vez cerrado también el firewall, ver
+  control 11) ya no llega al proceso.
+
+## 11. Reglas de firewall innecesarias o contradictorias con la arquitectura
+
+- **Amenaza:** superficie de ataque innecesaria por reglas de firewall más permisivas de lo que el ejercicio
+  permite.
+- **Hallazgos en la instancia GCP real** (`integracion`, proyecto `integracion-505802`), no visibles desde el
+  código: el puerto 3000 estaba abierto a `0.0.0.0/0` con **dos reglas duplicadas** (`allow-node-3000` y
+  `permitir-tcp-3000`) — contradice directamente el punto 19 de la Parte 8 (ver control 10); y el puerto 3389
+  (RDP) estaba abierto a `0.0.0.0/0` sin ningún servicio Windows escuchando ahí (la instancia es CentOS Linux) —
+  regla sin propósito.
+- **Estado:** ~ Pendiente de limpiar — identificado el 2026-09-01, se cerrará una vez que el reverse proxy
+  (Apache/NGINX bajo `/library`) esté configurado y verificado funcionando (para no cerrar el único acceso HTTP
+  directo a la app antes de tener el proxy listo). Plan: eliminar las 2 reglas de puerto 3000 y la de RDP,
+  dejando solo 22 (SSH), 80 (HTTP) y, si se agrega TLS más adelante, 443.
+
+## 12. No publicar contraseñas, `.env`, claves SSH, tokens o cadenas de conexión en `ubiquitous.udem.edu`
 
 - **Amenaza:** que al comprimir y publicar el proyecto en el sitio de evidencias, se filtren credenciales reales
   (de la base de datos de producción, de la instancia GCP, etc.) accesibles públicamente.
@@ -180,13 +208,18 @@ conocida · ✗ Control ausente.
 | 6 | Middleware de error final reenvía `err.message` crudo al usuario | `app.js` | **Alta** | ✓ Corregido 2026-08-31 |
 | 4 | `SESSION_SECRET` con fallback hardcodeado | `app.js:36` | Baja | ✗ Pendiente (deliberado, ver nota abajo) |
 | 5 | Filtro de imagen solo por extensión, no por MIME/magic bytes | `middlewares/upload.js` | Baja | ✗ Pendiente (deliberado) |
-| 7 | `library_user` es `OWNER` de la base (no mínimo privilegio) | `db/00_create_database.sql` + `db/01_schema.sql` | **Alta** | ~ Corregido y verificado en local 2026-08-31; falta re-cargarlo en la instancia GCP real (ver D-15/D-18) |
+| 7 | `library_user` es `OWNER` de la base (no mínimo privilegio) | `db/00_create_database.sql` + `db/01_schema.sql` | **Alta** | ✓ Corregido y verificado en la instancia GCP real (`integracion`) el 2026-09-01 |
 | 8 | Checklist de secretos antes de publicar `.tar.gz` | Al llegar a la Parte 10 | — | ✗ Pendiente hasta esa fase |
+| 9 | `HOST` por defecto era `0.0.0.0` (Node expuesto directo a Internet) | `src/server.js` | **Alta** | ✓ Corregido y verificado en GCP el 2026-09-01 (control 10) |
+| 10 | Puerto 3000 abierto a `0.0.0.0/0` en el firewall de GCP (2 reglas duplicadas) + regla RDP sin uso | Consola/`gcloud` de GCP | **Alta** | ~ Pendiente cerrar hasta que el reverse proxy esté verificado (control 11) |
 
 Las 4 primeras brechas se corrigieron el mismo día que se detectaron por ser cambios pequeños y localizados (no
 tocan el modelo de datos ni cambian ningún contrato entre módulos), verificados con `node -c` en los 4 archivos
 modificados y un smoke test manual del servidor confirmando que `GET /libros` sin sesión ahora responde
 `302 → /login`. Las brechas 4 y 5 se dejaron deliberadamente para no introducir una dependencia nueva
 (`file-type`) ni cambiar el comportamiento de arranque sin antes decidir junto con el resto del equipo/documentación
-cómo debe fallar la app si falta `SESSION_SECRET` en producción. La brecha 7 depende de la Parte 4 (GCP) y la 8 de
-la Parte 10 (publicación), ambas fuera del alcance de "código" de esta sesión.
+cómo debe fallar la app si falta `SESSION_SECRET` en producción. La brecha 8 depende de la Parte 10 (publicación).
+Las brechas 7 y 9 se detectaron y corrigieron al desplegar de verdad en la instancia GCP — ninguna de las dos era
+visible solo revisando el código en local, lo que confirma el valor de probar contra infraestructura real antes de
+dar una parte por cerrada. La 10 se deja pendiente a propósito un poco más: cerrar el puerto 3000 antes de tener
+el reverse proxy funcionando dejaría la app completamente inaccesible desde fuera del servidor.
