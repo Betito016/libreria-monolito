@@ -1,0 +1,105 @@
+<svg viewBox="0 0 1160 700" width="1160" height="700" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1160" height="700" fill="#ffffff"/>
+
+  <text x="580" y="30" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">
+    Macro-arquitectura monolítica — Librería en Línea
+  </text>
+  <text x="580" y="50" text-anchor="middle" font-size="12" fill="#475569">
+    Navegador → Apache/NGINX → aplicación Node.js/Express → módulos internos → PostgreSQL / almacenamiento de imágenes
+  </text>
+
+  <!-- Navegador -->
+  <rect x="440" y="70" width="240" height="50" rx="8" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.5"/>
+  <text x="560" y="100" text-anchor="middle" font-size="14" font-weight="600" fill="#0c4a6e">Navegador (cliente)</text>
+
+  <line x1="560" y1="120" x2="560" y2="155" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="575" y="142" font-size="11" fill="#475569">HTTP :80 / :443</text>
+
+  <!-- Reverse proxy -->
+  <rect x="410" y="155" width="300" height="55" rx="8" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+  <text x="560" y="178" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">Apache / NGINX (reverse proxy)</text>
+  <text x="560" y="196" text-anchor="middle" font-size="11" fill="#78350f">publica /library → proxy_pass a 127.0.0.1:3000</text>
+
+  <line x1="560" y1="210" x2="560" y2="245" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="575" y="232" font-size="11" fill="#475569">HTTP interno (solo localhost)</text>
+
+  <!-- Monolito container -->
+  <rect x="60" y="245" width="780" height="290" rx="10" fill="#f8fafc" stroke="#1e293b" stroke-width="2" stroke-dasharray="6,4"/>
+  <text x="450" y="270" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a">
+    MONOLITO — Node.js / Express (127.0.0.1:3000)
+  </text>
+  <text x="450" y="286" text-anchor="middle" font-size="11" fill="#475569">
+    Un único proceso, un único artefacto desplegable — interfaz, lógica de negocio y acceso a datos en la misma unidad
+  </text>
+
+  <!-- Row 1: 4 boxes -->
+  <g font-size="12.5">
+    <rect x="90" y="305" width="165" height="66" rx="6" fill="#ede9fe" stroke="#6d28d9"/>
+    <text x="172" y="332" text-anchor="middle" font-weight="600" fill="#4c1d95">Presentación</text>
+    <text x="172" y="349" text-anchor="middle" font-size="10.5" fill="#4c1d95">render EJS server-side</text>
+
+    <rect x="270" y="305" width="165" height="66" rx="6" fill="#dbeafe" stroke="#1d4ed8"/>
+    <text x="352" y="332" text-anchor="middle" font-weight="600" fill="#1e3a8a">Rutas / Controladores</text>
+    <text x="352" y="349" text-anchor="middle" font-size="10.5" fill="#1e3a8a">*.routes.js / *.controller.js</text>
+
+    <rect x="450" y="305" width="185" height="66" rx="6" fill="#dcfce7" stroke="#15803d"/>
+    <text x="542" y="326" text-anchor="middle" font-weight="600" fill="#14532d">Servicios / lógica</text>
+    <text x="542" y="342" text-anchor="middle" font-weight="600" fill="#14532d">de negocio</text>
+    <text x="542" y="358" text-anchor="middle" font-size="10.5" fill="#14532d">validarLibro(), reglas de rol</text>
+
+    <rect x="655" y="305" width="165" height="66" rx="6" fill="#fee2e2" stroke="#b91c1c"/>
+    <text x="737" y="332" text-anchor="middle" font-weight="600" fill="#7f1d1d">Middleware</text>
+    <text x="737" y="349" text-anchor="middle" font-size="10.5" fill="#7f1d1d">requireLogin / requireAdmin, sesión</text>
+  </g>
+
+  <!-- Row 2: 3 boxes -->
+  <g font-size="12.5">
+    <rect x="90" y="405" width="165" height="66" rx="6" fill="#fce7f3" stroke="#be185d"/>
+    <text x="172" y="426" text-anchor="middle" font-weight="600" fill="#831843">Acceso a datos</text>
+    <text x="172" y="442" text-anchor="middle" font-size="10.5" fill="#831843">*.model.js — SQL parametrizado (pg)</text>
+    <text x="172" y="457" text-anchor="middle" font-size="10.5" fill="#831843">CALL a stored procedures</text>
+
+    <rect x="270" y="405" width="165" height="66" rx="6" fill="#e0e7ff" stroke="#4338ca"/>
+    <text x="352" y="432" text-anchor="middle" font-weight="600" fill="#312e81">Vistas (EJS)</text>
+    <text x="352" y="449" text-anchor="middle" font-size="10.5" fill="#312e81">views/*.ejs — sin SQL ni lógica</text>
+
+    <rect x="450" y="405" width="185" height="66" rx="6" fill="#fff7ed" stroke="#c2410c"/>
+    <text x="542" y="432" text-anchor="middle" font-weight="600" fill="#7c2d12">Archivos estáticos</text>
+    <text x="542" y="449" text-anchor="middle" font-size="10.5" fill="#7c2d12">public/css, public/js</text>
+  </g>
+
+  <text x="450" y="505" text-anchor="middle" font-size="11" fill="#475569">
+    app.js inicializa Express, monta middleware/rutas y arranca el proceso — no contiene lógica de negocio
+  </text>
+
+  <!-- External: PostgreSQL -->
+  <line x1="255" y1="438" x2="920" y2="300" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="920" y="255" width="200" height="70" rx="8" fill="#cffafe" stroke="#0e7490" stroke-width="1.5"/>
+  <text x="1020" y="284" text-anchor="middle" font-size="14" font-weight="700" fill="#164e63">PostgreSQL</text>
+  <text x="1020" y="302" text-anchor="middle" font-size="10.5" fill="#164e63">library_db — rol library_user</text>
+  <text x="1020" y="316" text-anchor="middle" font-size="10.5" fill="#164e63">(privilegios mínimos, sin DDL)</text>
+
+  <!-- External: uploads -->
+  <line x1="255" y1="455" x2="920" y2="460" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="920" y="425" width="200" height="70" rx="8" fill="#fef9c3" stroke="#a16207" stroke-width="1.5"/>
+  <text x="1020" y="454" text-anchor="middle" font-size="14" font-weight="700" fill="#713f12">Almacenamiento</text>
+  <text x="1020" y="470" text-anchor="middle" font-size="12" font-weight="700" fill="#713f12">de imágenes</text>
+  <text x="1020" y="486" text-anchor="middle" font-size="10.5" fill="#713f12">uploads/ (filesystem)</text>
+
+  <!-- Footer note -->
+  <rect x="60" y="555" width="1040" height="90" rx="8" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="80" y="578" font-size="12" font-weight="600" fill="#0f172a">Por qué sigue siendo un monolito aunque el código esté organizado en módulos:</text>
+  <text x="80" y="597" font-size="11.5" fill="#334155">Los 7 elementos internos (presentación, rutas, servicios, middleware, acceso a datos, vistas, estáticos) viven en el mismo proceso Node,</text>
+  <text x="80" y="614" font-size="11.5" fill="#334155">comparten memoria y se despliegan juntos como una sola unidad — no hay una API/red entre ellos. La separación es solo de código</text>
+  <text x="80" y="631" font-size="11.5" fill="#334155">(organización interna), no de despliegue. No existen rutas REST/GraphQL/SOAP ni intercambio JSON/XML entre capas.</text>
+
+  <text x="580" y="675" text-anchor="middle" font-size="10" fill="#94a3b8">
+    docs/ARCHITECTURE_MONOLITHIC.svg — Ejercicio 02, Integración de Aplicaciones Computacionales, UDEM
+  </text>
+</svg>

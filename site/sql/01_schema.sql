@@ -1,10 +1,11 @@
 -- =====================================================================
--- library/db/esquema.sql
--- Sistema de administración de libros - Diseño de Base de Datos
+-- db/01_schema.sql
+-- Sistema de administración de libros — Diseño de Base de Datos
 -- Motor: PostgreSQL
 -- =====================================================================
 --
--- PARTE 1 - ANÁLISIS Y NORMALIZACIÓN
+-- ANÁLISIS Y NORMALIZACIÓN (ver también docs/NORMALIZATION_4FN.xlsx,
+-- pendiente de crear, y docs/DB_DESIGN_ER_4FN.png)
 -- ---------------------------------------------------------------------
 -- Dependencias funcionales (FD):
 --   isbn -> titulo, anio_publicacion, precio, stock, formato_id
@@ -24,13 +25,18 @@
 --
 -- Regla de negocio: a lo más UN usuario con rol 'administrador'.
 -- Se resuelve con un índice único parcial (no es normalización, es
--- integridad de negocio).
+-- integridad de negocio) — ver ux_un_solo_administrador más abajo.
+--
+-- Ejecutar como superusuario (mismo rol que corrió 00_create_database.sql),
+-- NO como library_user, porque este script crea el esquema y al final le
+-- otorga privilegios a library_user (no puede otorgárselos a sí mismo):
+--   sudo -i -u postgres psql -d library_db -f db/01_schema.sql
 -- =====================================================================
 
 BEGIN;
 
 -- ---------------------------------------------------------------------
--- Extensiones útiles (UUID como alternativa a serial si se requiere)
+-- Extensiones útiles (pgcrypto: gen_random_uuid() para usuarios.id)
 -- ---------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
@@ -154,26 +160,23 @@ CREATE UNIQUE INDEX ux_una_imagen_principal_por_libro
     WHERE es_principal = TRUE;
 
 -- =====================================================================
--- TRIGGERS: mantener actualizado_en automáticamente
+-- PRIVILEGIOS MÍNIMOS PARA library_user (rol de aplicación)
 -- =====================================================================
-CREATE OR REPLACE FUNCTION fn_actualizar_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.actualizado_en = now();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_usuarios_actualizado
-    BEFORE UPDATE ON usuarios
-    FOR EACH ROW EXECUTE FUNCTION fn_actualizar_timestamp();
-
-CREATE TRIGGER trg_libros_actualizado
-    BEFORE UPDATE ON libros
-    FOR EACH ROW EXECUTE FUNCTION fn_actualizar_timestamp();
+-- library_user NO es owner de estas tablas (las crea el superusuario
+-- que ejecuta este script); solo puede leer y escribir filas, nunca
+-- alterar el esquema (no DDL) ni crear/borrar roles o bases de datos.
+-- Ver docs/SECURITY_REVIEW.md, control 9, y docs/ENGINEERING_DECISIONS.md
+-- decisión D-13.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO library_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO library_user;
 
 COMMIT;
 
+-- Los triggers (05_triggers.sql), stored procedures (04_stored_procedures.sql)
+-- y vistas (06_views.sql) se cargan por separado, en ese orden relativo,
+-- después de db/02_seed_30_per_table.sql y db/03_all_quieries_before_stored_procedures.sql
+-- (ver docs/GCP_COMMANDS.md, pendiente, para el orden de carga completo).
+
 -- =====================================================================
--- FIN esquema.sql
+-- FIN 01_schema.sql
 -- =====================================================================

@@ -18,8 +18,15 @@ administrar las dependencias del proyecto.
 
 ```
 proyecto/
-├── data/
-│   └── db_scheme.sql        <- esquema PostgreSQL (Parte 1 del ejercicio)
+├── db/
+│   ├── 00_create_database.sql              <- rol + base de datos (mínimo privilegio)
+│   ├── 01_schema.sql                       <- tablas, PK/FK/CHECK, privilegios de library_user
+│   ├── 02_seed_30_per_table.sql            <- datos sintéticos (~30 filas por tabla)
+│   ├── 03_all_quieries_before_stored_procedures.sql  <- consultas de verificación
+│   ├── 04_stored_procedures.sql            <- sp_asignar_autores_libro / sp_asignar_generos_libro
+│   ├── 05_triggers.sql                     <- triggers de actualizado_en
+│   └── 06_views.sql                        <- vista_catalogo_libros
+├── docs/                                   <- documentación de ingeniería del ejercicio
 └── apps/
     └── web-monolito/        <- esta aplicación
         ├── package.json
@@ -27,27 +34,33 @@ proyecto/
         └── src/...
 ```
 
-Ajusta las rutas de este documento si tu estructura real difiere.
+Ajusta las rutas de este documento si tu estructura real difiere. (La carpeta `data/` que existía antes con
+`db_scheme.sql`/`seed.sql` se consolidó dentro de `db/` para evitar tener dos copias del esquema divergiendo con el
+tiempo — ver `docs/ENGINEERING_DECISIONS.md`.)
 
 ---
 
 ## 1. Requisitos previos
 
-Se asume que en el servidor **CentOS Stream 10** ya están instalados y
-corriendo:
+Se asume que en el servidor **CentOS Stream 10** ya está instalado y
+corriendo PostgreSQL (servidor y cliente `psql`).
 
-- PostgreSQL (servidor y cliente `psql`)
-- Un rol `library_user` con contraseña `library666`
-- Una base de datos `library_db` propiedad de (o con privilegios totales
-  para) `library_user`
-
-Si el rol/base de datos aún no existen, créalos como el usuario del
-sistema `postgres`:
+El rol de aplicación (`library_user`) y la base de datos se crean con
+`db/00_create_database.sql`, **no a mano** — a propósito, para que
+`library_user` quede con privilegios mínimos (no es dueño de la base,
+no puede hacer DDL) en vez de tener `OWNER` completo. Ver
+`docs/SECURITY_REVIEW.md`, control 9, y `docs/ENGINEERING_DECISIONS.md`,
+decisión D-13.
 
 ```bash
-sudo -i -u postgres psql -c "CREATE ROLE library_user WITH LOGIN PASSWORD 'library666';"
-sudo -i -u postgres psql -c "CREATE DATABASE library_db OWNER library_user;"
+# Ejecutar como el usuario del sistema "postgres" (superusuario de PostgreSQL):
+sudo -i -u postgres psql -f db/00_create_database.sql
 ```
+
+Antes de correrlo, edita `db/00_create_database.sql` y reemplaza el
+placeholder `CAMBIA_ESTA_CONTRASEÑA_ANTES_DE_USAR` por una contraseña
+real — **no la dejes en el archivo versionado en git** una vez definida
+(o pásala por variable de entorno al ejecutar `psql`).
 
 ## 2. Instalar Node.js
 
@@ -71,41 +84,45 @@ npm -v
 ```bash
 sudo mkdir -p /opt/libreria
 sudo chown $USER:$USER /opt/libreria
-# copia el repositorio completo (apps/ y data/) a /opt/libreria
+# copia el repositorio completo (apps/, db/, docs/) a /opt/libreria
 # por ejemplo con scp, rsync o git clone
 ```
 
 A partir de aquí se asume que el proyecto quedó en `/opt/libreria`, con
-`/opt/libreria/data/db_scheme.sql` y `/opt/libreria/apps/web-monolito`.
+`/opt/libreria/db/` y `/opt/libreria/apps/web-monolito`.
 
 ## 4. Cargar el esquema en PostgreSQL
 
+Los scripts de `db/` se cargan **en este orden exacto** (cada uno depende del
+anterior), y no todos con el mismo rol: `00`, `01`, `04`, `05` y `06` son
+DDL (crean la base, tablas, procedimientos, triggers y vistas) y deben
+ejecutarse como el superusuario `postgres`; `library_user` a propósito
+**no** tiene privilegio para crear objetos (ver `docs/SECURITY_REVIEW.md`,
+control 9) — solo `02` y `03`, que son lectura/escritura de filas, se
+ejecutan como `library_user`. (Verificado en una instancia local: intentar
+correr `04_stored_procedures.sql` como `library_user` falla con
+`ERROR: permiso denegado al esquema public`, como se espera.)
+
 ```bash
 cd /opt/libreria
-psql -h localhost -U library_user -d library_db -f data/db_scheme.sql
+
+sudo -i -u postgres psql -f db/00_create_database.sql
+sudo -i -u postgres psql -d library_db -f db/01_schema.sql
+
+psql -h localhost -U library_user -d library_db -f db/02_seed_30_per_table.sql
+psql -h localhost -U library_user -d library_db -f db/03_all_quieries_before_stored_procedures.sql
+
+sudo -i -u postgres psql -d library_db -f db/04_stored_procedures.sql
+sudo -i -u postgres psql -d library_db -f db/05_triggers.sql
+sudo -i -u postgres psql -d library_db -f db/06_views.sql
 ```
 
-Te pedirá la contraseña (`library666`).
-
-> **Nota sobre `pgcrypto`:** el esquema usa `CREATE EXTENSION IF NOT
-> EXISTS "pgcrypto"` (necesaria para `gen_random_uuid()` en la tabla
-> `usuarios`). Si `library_user` no tiene privilegio `CREATEDB`/superusuario
-> y la extensión falla, créala una vez como `postgres`:
-> ```bash
-> sudo -i -u postgres psql -d library_db -c 'CREATE EXTENSION IF NOT EXISTS "pgcrypto";'
-> ```
-> y vuelve a ejecutar `db_scheme.sql` (o solo la parte de `CREATE TABLE`
-> en adelante).
-
-Si ejecutaste el script como `postgres` en vez de `library_user`, otorga
-privilegios explícitos:
-
-```bash
-sudo -i -u postgres psql -d library_db -c "
-  GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO library_user;
-  GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO library_user;
-"
-```
+`db/01_schema.sql` ya incluye `CREATE EXTENSION IF NOT EXISTS "pgcrypto"`
+(necesaria para `gen_random_uuid()` en `usuarios`) y, al final, los
+`GRANT SELECT, INSERT, UPDATE, DELETE` que le dan a `library_user`
+exactamente los privilegios que la aplicación necesita — nada de DDL, ni
+ser dueño de la base. Guarda la salida de cada paso (o una captura de
+`psql`) como evidencia para `docs/GCP_COMMANDS.md`.
 
 ## 5. Configurar y probar la aplicación
 

@@ -65,7 +65,10 @@ app.use((req, res) => res.status(404).render('404'));
 // ---- Manejador de errores centralizado ----
 app.use((err, req, res, next) => {
   console.error(err);
-  req.session.flash = { type: 'error', message: err.message || 'Ocurrió un error inesperado.' };
+  // Nunca reenviar err.message al usuario: puede contener detalle interno
+  // de PostgreSQL (nombre de tabla/constraint). El detalle real queda solo
+  // en el log del servidor (console.error, arriba).
+  req.session.flash = { type: 'error', message: 'Ocurrió un error inesperado. Intenta de nuevo.' };
   res.redirect(req.get('Referer') || '/');
 });
 

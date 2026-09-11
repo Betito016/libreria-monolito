@@ -8,6 +8,34 @@ function normalizarIds(valor) {
   return Array.isArray(valor) ? valor.map(Number) : [Number(valor)];
 }
 
+// Validación server-side (RNF-01): no confiar solo en los CHECK de la BD
+// ni en la validación HTML del formulario.
+function validarLibro({ isbn, titulo, anio_publicacion, precio, stock, formato_id }) {
+  const errores = [];
+  if (!isbn || !isbn.trim()) errores.push('El ISBN es obligatorio.');
+  if (!titulo || !titulo.trim()) errores.push('El título es obligatorio.');
+  if (!formato_id) errores.push('Selecciona un formato.');
+
+  const precioNum = Number(precio);
+  if (precio === undefined || precio === '' || Number.isNaN(precioNum) || precioNum < 0) {
+    errores.push('El precio debe ser un número mayor o igual a 0.');
+  }
+
+  const stockNum = Number(stock);
+  if (stock === undefined || stock === '' || !Number.isInteger(stockNum) || stockNum < 0) {
+    errores.push('El stock debe ser un número entero mayor o igual a 0.');
+  }
+
+  if (anio_publicacion !== undefined && anio_publicacion !== '') {
+    const anioNum = Number(anio_publicacion);
+    if (!Number.isInteger(anioNum) || anioNum <= 0) {
+      errores.push('El año de publicación debe ser un número entero positivo.');
+    }
+  }
+
+  return errores;
+}
+
 module.exports = {
   index: async (req, res, next) => {
     try {
@@ -43,6 +71,11 @@ module.exports = {
   crear: async (req, res, next) => {
     try {
       const { isbn, titulo, anio_publicacion, precio, stock, formato_id } = req.body;
+      const errores = validarLibro({ isbn, titulo, anio_publicacion, precio, stock, formato_id });
+      if (errores.length) {
+        req.session.flash = { type: 'error', message: errores.join(' ') };
+        return res.redirect('/libros/nuevo');
+      }
       const id = await librosModel.crear({ isbn, titulo, anio_publicacion, precio, stock, formato_id });
       await librosModel.asignarAutores(id, normalizarIds(req.body.autores));
       await librosModel.asignarGeneros(id, normalizarIds(req.body.generos));
@@ -74,6 +107,11 @@ module.exports = {
   actualizar: async (req, res, next) => {
     try {
       const { isbn, titulo, anio_publicacion, precio, stock, formato_id } = req.body;
+      const errores = validarLibro({ isbn, titulo, anio_publicacion, precio, stock, formato_id });
+      if (errores.length) {
+        req.session.flash = { type: 'error', message: errores.join(' ') };
+        return res.redirect(`/libros/${req.params.id}/editar`);
+      }
       await librosModel.actualizar(req.params.id, { isbn, titulo, anio_publicacion, precio, stock, formato_id });
       await librosModel.asignarAutores(req.params.id, normalizarIds(req.body.autores));
       await librosModel.asignarGeneros(req.params.id, normalizarIds(req.body.generos));
