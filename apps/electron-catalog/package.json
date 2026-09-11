@@ -1,0 +1,14 @@
+{
+  "name": "library-catalog-electron",
+  "version": "1.0.0",
+  "description": "Aplicacion de escritorio (Electron, Windows 11) que muestra el catalogo de libros en cards, consumiendo exclusivamente el XML del microservicio SOAP/REST bilingue (services/soap). Arquitectura MVC.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  },
+  "author": "",
+  "license": "ISC"
+}

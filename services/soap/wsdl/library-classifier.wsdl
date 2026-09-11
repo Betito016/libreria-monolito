@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions 
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="http://udem.edu/iac/library/soap"
+    targetNamespace="http://udem.edu/iac/library/soap"
+    name="LibraryClassifierService">
+
+    <!-- =================================================================== -->
+    <!-- 1. DEFINICIÓN DE TIPOS (XSD)                                        -->
+    <!-- =================================================================== -->
+    <wsdl:types>
+        <xs:schema targetNamespace="http://udem.edu/iac/library/soap" elementFormDefault="qualified">
+            
+            <!-- Enumeración de modelos Cloud válidos -->
+            <xs:simpleType name="ModeloCloudType">
+                <xs:restriction base="xs:string">
+                    <xs:enumeration value="IaaS"/>
+                    <xs:enumeration value="PaaS"/>
+                    <xs:enumeration value="SaaS"/>
+                    <xs:enumeration value="FaaS"/>
+                </xs:restriction>
+            </xs:simpleType>
+
+            <!-- Tipo estructurado: Concepto Pendiente -->
+            <xs:complexType name="ConceptoPendienteType">
+                <xs:sequence>
+                    <xs:element name="concepto_id" type="xs:int"/>
+                    <xs:element name="concepto_nombre" type="xs:string"/>
+                    <xs:element name="definicion" type="xs:string"/>
+                    <xs:element name="libro_isbn" type="xs:string"/>
+                    <xs:element name="libro_titulo" type="xs:string"/>
+                    <xs:element name="libro_anio" type="xs:int"/>
+                    <xs:element name="categoria" type="xs:string"/>
+                </xs:sequence>
+            </xs:complexType>
+
+            <!-- Operación 1: ObtenerConceptosPendientes -->
+            <xs:element name="ObtenerConceptosPendientesRequest">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="clasificador_email" type="xs:string" minOccurs="0"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+            <xs:element name="ObtenerConceptosPendientesResponse">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="conceptos" type="tns:ConceptoPendienteType" minOccurs="0" maxOccurs="unbounded"/>
+                        <xs:element name="total_pendientes" type="xs:int"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+            <!-- Operación 2: RegistrarClasificacion -->
+            <xs:element name="RegistrarClasificacionRequest">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="nombre" type="xs:string"/>
+                        <xs:element name="apellidos" type="xs:string"/>
+                        <xs:element name="email" type="xs:string"/>
+                        <xs:element name="concepto_id" type="xs:int"/>
+                        <xs:element name="libro_isbn" type="xs:string"/>
+                        <xs:element name="modelo_cloud" type="tns:ModeloCloudType"/>
+                        <xs:element name="cliente_tipo" type="xs:string" minOccurs="0"/>
+                        <xs:element name="cliente_id" type="xs:string" minOccurs="0"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+            <xs:element name="RegistrarClasificacionResponse">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="status" type="xs:string"/>
+                        <xs:element name="mensaje" type="xs:string"/>
+                        <xs:element name="clasificacion_id" type="xs:int"/>
+                        <xs:element name="fecha_registro" type="xs:string"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+            <!-- Operación 3: ObtenerProgresoUsuario -->
+            <xs:element name="ObtenerProgresoUsuarioRequest">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="email" type="xs:string"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+            <xs:element name="ObtenerProgresoUsuarioResponse">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="email" type="xs:string"/>
+                        <xs:element name="nombre_completo" type="xs:string"/>
+                        <xs:element name="total_clasificados" type="xs:int"/>
+                        <xs:element name="total_pendientes" type="xs:int"/>
+                        <xs:element name="porcentaje_progreso" type="xs:decimal"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+            <!-- Operación 4 (Tarea 1): ObtenerEstadisticasPorModelo (Requiere WS-Security) -->
+            <xs:element name="ObtenerEstadisticasPorModeloRequest">
+                <xs:complexType>
+                    <xs:sequence>
+                        <!-- Petición vacía ya que la autenticación reside en el Header WS-Security -->
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+            <xs:element name="ObtenerEstadisticasPorModeloResponse">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="total_iaas" type="xs:int"/>
+                        <xs:element name="total_paas" type="xs:int"/>
+                        <xs:element name="total_saas" type="xs:int"/>
+                        <xs:element name="total_faas" type="xs:int"/>
+                        <xs:element name="total_general" type="xs:int"/>
+                        <xs:element name="timestamp_consulta" type="xs:string"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+            <!-- Detalle de SOAP Fault estructurado -->
+            <xs:element name="SoapFaultDetail">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="codigo_error" type="xs:string"/>
+                        <xs:element name="mensaje" type="xs:string"/>
+                        <xs:element name="campo_invalido" type="xs:string" minOccurs="0"/>
+                        <xs:element name="timestamp" type="xs:string"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+
+        </xs:schema>
+    </wsdl:types>
+
+    <!-- =================================================================== -->
+    <!-- 2. MENSAJES SOAP                                                    -->
+    <!-- =================================================================== -->
+    
+    <!-- Mensajes ObtenerConceptosPendientes -->
+    <wsdl:message name="ObtenerConceptosPendientesInput">
+        <wsdl:part name="parameters" element="tns:ObtenerConceptosPendientesRequest"/>
+    </wsdl:message>
+    <wsdl:message name="ObtenerConceptosPendientesOutput">
+        <wsdl:part name="parameters" element="tns:ObtenerConceptosPendientesResponse"/>
+    </wsdl:message>
+
+    <!-- Mensajes RegistrarClasificacion -->
+    <wsdl:message name="RegistrarClasificacionInput">
+        <wsdl:part name="parameters" element="tns:RegistrarClasificacionRequest"/>
+    </wsdl:message>
+    <wsdl:message name="RegistrarClasificacionOutput">
+        <wsdl:part name="parameters" element="tns:RegistrarClasificacionResponse"/>
+    </wsdl:message>
+
+    <!-- Mensajes ObtenerProgresoUsuario -->
+    <wsdl:message name="ObtenerProgresoUsuarioInput">
+        <wsdl:part name="parameters" element="tns:ObtenerProgresoUsuarioRequest"/>
+    </wsdl:message>
+    <wsdl:message name="ObtenerProgresoUsuarioOutput">
+        <wsdl:part name="parameters" element="tns:ObtenerProgresoUsuarioResponse"/>
+    </wsdl:message>
+
+    <!-- Mensajes ObtenerEstadisticasPorModelo -->
+    <wsdl:message name="ObtenerEstadisticasPorModeloInput">
+        <wsdl:part name="parameters" element="tns:ObtenerEstadisticasPorModeloRequest"/>
+    </wsdl:message>
+    <wsdl:message name="ObtenerEstadisticasPorModeloOutput">
+        <wsdl:part name="parameters" element="tns:ObtenerEstadisticasPorModeloResponse"/>
+    </wsdl:message>
+
+    <!-- Mensaje de Falla -->
+    <wsdl:message name="SoapFaultMessage">
+        <wsdl:part name="detail" element="tns:SoapFaultDetail"/>
+    </wsdl:message>
+
+    <!-- =================================================================== -->
+    <!-- 3. PORT TYPE (INTERFAZ DE SERVICIO)                                 -->
+    <!-- =================================================================== -->
+    <wsdl:portType name="LibraryClassifierPortType">
+        
+        <wsdl:operation name="ObtenerConceptosPendientes">
+            <wsdl:documentation>Recupera la lista de conceptos del catálogo pendientes por clasificar.</wsdl:documentation>
+            <wsdl:input message="tns:ObtenerConceptosPendientesInput"/>
+            <wsdl:output message="tns:ObtenerConceptosPendientesOutput"/>
+            <wsdl:fault name="SoapFault" message="tns:SoapFaultMessage"/>
+        </wsdl:operation>
+
+        <wsdl:operation name="RegistrarClasificacion">
+            <wsdl:documentation>Registra una clasificación de servicio Cloud asociada a un concepto y usuario.</wsdl:documentation>
+            <wsdl:input message="tns:RegistrarClasificacionInput"/>
+            <wsdl:output message="tns:RegistrarClasificacionOutput"/>
+            <wsdl:fault name="SoapFault" message="tns:SoapFaultMessage"/>
+        </wsdl:operation>
+
+        <wsdl:operation name="ObtenerProgresoUsuario">
+            <wsdl:documentation>Calcula el porcentaje y conteo de conceptos clasificados vs pendientes de un usuario.</wsdl:documentation>
+            <wsdl:input message="tns:ObtenerProgresoUsuarioInput"/>
+            <wsdl:output message="tns:ObtenerProgresoUsuarioOutput"/>
+            <wsdl:fault name="SoapFault" message="tns:SoapFaultMessage"/>
+        </wsdl:operation>
+
+        <wsdl:operation name="ObtenerEstadisticasPorModelo">
+            <wsdl:documentation>Operación sensible protegida por WS-Security que devuelve métricas agregadas por IaaS, PaaS, SaaS y FaaS.</wsdl:documentation>
+            <wsdl:input message="tns:ObtenerEstadisticasPorModeloInput"/>
+            <wsdl:output message="tns:ObtenerEstadisticasPorModeloOutput"/>
+            <wsdl:fault name="SoapFault" message="tns:SoapFaultMessage"/>
+        </wsdl:operation>
+
+    </wsdl:portType>
+
+    <!-- =================================================================== -->
+    <!-- 4. BINDING SOAP (PROTOCOLO Y TRANSPORTE)                            -->
+    <!-- =================================================================== -->
+    <wsdl:binding name="LibraryClassifierBinding" type="tns:LibraryClassifierPortType">
+        <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+        <wsdl:operation name="ObtenerConceptosPendientes">
+            <soap:operation soapAction="http://udem.edu/iac/library/soap/ObtenerConceptosPendientes"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+            <wsdl:fault name="SoapFault">
+                <soap:fault name="SoapFault" use="literal"/>
+            </wsdl:fault>
+        </wsdl:operation>
+
+        <wsdl:operation name="RegistrarClasificacion">
+            <soap:operation soapAction="http://udem.edu/iac/library/soap/RegistrarClasificacion"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+            <wsdl:fault name="SoapFault">
+                <soap:fault name="SoapFault" use="literal"/>
+            </wsdl:fault>
+        </wsdl:operation>
+
+        <wsdl:operation name="ObtenerProgresoUsuario">
+            <soap:operation soapAction="http://udem.edu/iac/library/soap/ObtenerProgresoUsuario"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+            <wsdl:fault name="SoapFault">
+                <soap:fault name="SoapFault" use="literal"/>
+            </wsdl:fault>
+        </wsdl:operation>
+
+        <wsdl:operation name="ObtenerEstadisticasPorModelo">
+            <soap:operation soapAction="http://udem.edu/iac/library/soap/ObtenerEstadisticasPorModelo"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+            <wsdl:fault name="SoapFault">
+                <soap:fault name="SoapFault" use="literal"/>
+            </wsdl:fault>
+        </wsdl:operation>
+
+    </wsdl:binding>
+
+    <!-- =================================================================== -->
+    <!-- 5. SERVICIO Y ENDPOINT                                              -->
+    <!-- =================================================================== -->
+    <wsdl:service name="LibraryClassifierService">
+        <wsdl:documentation>Servicio SOAP independiente para la clasificación del catálogo de librería.</wsdl:documentation>
+        <wsdl:port name="LibraryClassifierPort" binding="tns:LibraryClassifierBinding">
+            <soap:address location="http://localhost:5000/soap"/>
+        </wsdl:port>
+    </wsdl:service>
+
+</wsdl:definitions>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Catálogo de Libros</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>📚 Catálogo de Libros</h1>
+    <button id="settings-btn" class="btn btn--ghost">⚙ Configuración</button>
+  </header>
+
+  <div id="settings-panel" class="settings-panel hidden">
+    <div class="settings-card">
+      <h2>Configuración del microservicio</h2>
+      <p class="settings-hint">
+        La aplicación consume exclusivamente XML. La URL base y el endpoint son
+        configurables y se guardan en LocalStorage.
+      </p>
+
+      <label for="setting-base-url">URL base</label>
+      <input id="setting-base-url" type="text" placeholder="http://34.61.137.144:5001" />
+
+      <label for="setting-endpoint">Endpoint</label>
+      <input id="setting-endpoint" type="text" placeholder="/books" />
+
+      <label for="setting-page-size">Libros por página</label>
+      <input id="setting-page-size" type="number" min="1" max="50" />
+
+      <div class="settings-actions">
+        <button id="settings-cancel" class="btn btn--ghost">Cancelar</button>
+        <button id="settings-save" class="btn btn--primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <p id="status" class="status"></p>
+
+  <main id="cards-grid" class="cards-grid"></main>
+
+  <footer id="pagination" class="pagination"></footer>
+
+  <script src="models/ConfigModel.js"></script>
+  <script src="models/BookModel.js"></script>
+  <script src="views/CatalogView.js"></script>
+  <script src="views/SettingsView.js"></script>
+  <script src="controllers/CatalogController.js"></script>
+  <script src="controllers/SettingsController.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

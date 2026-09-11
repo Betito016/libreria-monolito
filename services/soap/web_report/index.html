@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte Técnico: Módulo SOAP de Clasificación de Librería | UDEM 2026</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-container">
+    <!-- Menú Lateral / Navegación -->
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-badge">SOAP</div>
+            <div>
+                <div class="brand-title">Librería SOAP</div>
+                <div class="brand-sub">IAC - Universidad de Monterrey</div>
+            </div>
+        </div>
+
+        <ul class="nav-menu">
+            <li class="nav-item active"><a href="#sec1"><span>01</span> Objetivo y Scope</a></li>
+            <li class="nav-item"><a href="#sec2"><span>02</span> Arquitectura</a></li>
+            <li class="nav-item"><a href="#sec3"><span>03</span> Monolito vs SOAP</a></li>
+            <li class="nav-item"><a href="#sec4"><span>04</span> Diseño de Persistencia</a></li>
+            <li class="nav-item"><a href="#sec5"><span>05</span> Contrato WSDL / XSD</a></li>
+            <li class="nav-item"><a href="#sec6"><span>06</span> Operaciones del Servicio</a></li>
+            <li class="nav-item"><a href="#sec7"><span>07</span> Mensajería y Faults</a></li>
+            <li class="nav-item"><a href="#sec8"><span>08</span> WS-Security</a></li>
+            <li class="nav-item"><a href="#sec9"><span>09</span> Clientes de Escritorio</a></li>
+            <li class="nav-item"><a href="#sec10"><span>10</span> Interoperabilidad</a></li>
+            <li class="nav-item"><a href="#sec11"><span>11</span> Plan de Pruebas</a></li>
+            <li class="nav-item"><a href="#sec12"><span>12</span> Evidencias de BD</a></li>
+            <li class="nav-item"><a href="#sec13"><span>13</span> Decisiones / Trade-offs</a></li>
+            <li class="nav-item"><a href="#sec14"><span>14</span> Problemas y Soluciones</a></li>
+            <li class="nav-item"><a href="#sec15"><span>15</span> Métricas vs REST</a></li>
+            <li class="nav-item"><a href="#sec16"><span>16</span> Uso de IA y Prompts</a></li>
+            <li class="nav-item"><a href="#sec17"><span>17</span> Conclusiones y Reflexión</a></li>
+            <li class="nav-item"><a href="#sec18"><span>18</span> Descargas</a></li>
+        </ul>
+    </aside>
+
+    <!-- Contenido Principal -->
+    <main class="main-content">
+        
+        <!-- Banner de Encabezado -->
+        <header class="hero-banner">
+            <span class="hero-tag">Integración de Aplicaciones Computacionales 2026</span>
+            <h1 class="hero-title">Módulo SOAP para Clasificar el Catálogo de una Librería</h1>
+            <p>Diseño, construcción, pruebas y documentación técnica de un servicio SOAP 1.1 desacoplado en Flask + psycopg2 con WS-Security, manejo de SOAP Faults y persistencia PostgreSQL.</p>
+            
+            <div class="hero-meta">
+                <span><strong>Materia:</strong> Integración de Aplicaciones Computacionales</span>
+                <span><strong>Profesor:</strong> Dr. Raúl Morales Salcedo</span>
+                <span><strong>Estado:</strong> <span class="badge badge-success">Completado y Verificado</span></span>
+            </div>
+        </header>
+
+        <!-- Sección 1: Objetivo y Scope -->
+        <section id="sec1" class="report-section">
+            <div class="section-header">
+                <span class="section-number">01</span>
+                <h2 class="section-title">Objetivo y Scope del Ejercicio</h2>
+            </div>
+            <p><strong>Objetivo Principal:</strong> Diseñar, implementar y validar un módulo de servicios web SOAP 1.1 en Python (Flask + psycopg2) que permita a aplicaciones de escritorio clasificar conceptos tecnológicos en modelos de nube (<code>IaaS</code>, <code>PaaS</code>, <code>SaaS</code>, <code>FaaS</code>) integrándose con la base de datos PostgreSQL de un monolito Node.js preexistente, <em>sin modificar el código fuente ni alterar las tablas del monolito</em>.</p>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">0</div>
+                    <div class="metric-label">Líneas modificadas en Monolito</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">4</div>
+                    <div class="metric-label">Operaciones SOAP Expuestas</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">100%</div>
+                    <div class="metric-label">Construcción Manual XML</div>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Área</th>
+                            <th>Dentro del Scope (In-Scope)</th>
+                            <th>Fuera del Scope (Out-of-Scope)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Lógica y Servidor</strong></td>
+                            <td>Módulo Flask independiente con parsing y construcción manual de XML mediante <code>xml.etree</code>.</td>
+                            <td>Frameworks de generación mágica en servidor (como Spyne). Migración a REST.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Persistencia</strong></td>
+                            <td>Acceso directo y transaccional a PostgreSQL (tablas propias y vistas de sólo lectura).</td>
+                            <td>Modificar tablas del monolito (<code>books</code>, <code>concepts</code>, <code>users</code>) o reemplazar motor BD.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Seguridad</strong></td>
+                            <td>Autenticación WS-Security (<code>wsse:Security</code> con <code>UsernameToken</code>) para operaciones sensibles.</td>
+                            <td>Tokens OAuth2 o JWT (pertenecientes al ecosistema REST). Reutilización de <code>users</code> del monolito.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Clientes</strong></td>
+                            <td>Aplicación de escritorio GUI en Tkinter y cliente de interoperabilidad en Zeep.</td>
+                            <td>Aplicaciones móviles o clientes con acceso directo por SQL a la base de datos.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sección 2: Arquitectura -->
+        <section id="sec2" class="report-section">
+            <div class="section-header">
+                <span class="section-number">02</span>
+                <h2 class="section-title">Arquitectura Inicial vs. Arquitectura Final</h2>
+            </div>
+            <p>La arquitectura evoluciona de un monolito centralizado a un sistema distribuido e interoperable gobernado por contratos formales:</p>
+            
+            <div class="code-block">
+                <div class="code-header"><span>DIAGRAMA MACRO-ARQUITECTURA DE INTEGRACIÓN</span></div>
+                <pre>
++------------------------------------+        +------------------------------------+
+|    Aplicación Escritorio GUI       |        |    Cliente Interoperable (Zeep)    |
+|   (Captura de Usuario/Concepto)    |        |     (Generado desde WSDL)          |
++-----------------+------------------+        +-----------------+------------------+
+                  |                                             |
+                  | HTTP POST (SOAP Envelope XML)               | HTTP POST (SOAP XML)
+                  +----------------------+----------------------+
+                                         |
+                                         v
+                         +-------------------------------+
+                         |      Módulo SOAP Flask        |
+                         |   - Router /soap & /soap?wsdl |
+                         |   - Parser Manual XML (etree) |
+                         |   - WS-Security Validator     |
+                         |   - SOAP Fault Dispatcher     |
+                         +---------------+---------------+
+                                         |
+                                         | psycopg2 (Transacciones / Mínimo Privilegio)
+                                         v
++------------------------+      +--------------------------------------------------+
+| Monolito Web Node.js   |      |             PostgreSQL Database                  |
+| (Operación sin cambio) |----->|  [Tablas Monolito]     [Tablas Propias Módulo]   |
++------------------------+      |  - books (RO)          - clasificadores (RW)     |
+                                |  - concepts (RO)       - clasificaciones_cloud   |
+                                |  - book_concepts (RO)  - clientes_servidos (RW)  |
+                                |  - categories (RO)                               |
+                                +--------------------------------------------------+
+                </pre>
+            </div>
+        </section>
+
+        <!-- Sección 3: Monolito vs SOAP -->
+        <section id="sec3" class="report-section">
+            <div class="section-header">
+                <span class="section-number">03</span>
+                <h2 class="section-title">Descripción del Monolito y del Módulo SOAP</h2>
+            </div>
+            <p><strong>El Monolito Node.js:</strong> Aplicación existente encargada de la gestión de catálogo de la librería (libros, precios, stock, autores y usuarios clientes). Posee un modelo de datos consolidado en PostgreSQL que no debe ser alterado para garantizar la estabilidad operativa del negocio.</p>
+            <p><strong>El Módulo SOAP:</strong> Servicio especializado en ingeniería de datos y clasificación colaborativa Cloud (IaaS, PaaS, SaaS, FaaS). Publica un contrato WSDL estricto y opera como subsistema autónomo que desacopla a los clientes de escritorio de la estructura interna de la base de datos.</p>
+        </section>
+
+        <!-- Sección 4: Persistencia -->
+        <section id="sec4" class="report-section">
+            <div class="section-header">
+                <span class="section-number">04</span>
+                <h2 class="section-title">Diseño de Datos y Tablas Propias del Módulo</h2>
+            </div>
+            <p>Para no contaminar ni modificar el esquema del monolito, se implementaron 3 tablas independientes, vistas y restricciones estrictas:</p>
+            
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tabla</th>
+                            <th>Columnas Principales</th>
+                            <th>Restricciones y Llaves</th>
+                            <th>Propósito / Justificación</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>clasificadores</code></td>
+                            <td><code>id, nombre, apellidos, email, creado_en</code></td>
+                            <td>PK: <code>id</code><br>UNIQUE: <code>email</code></td>
+                            <td>Aislar la identidad del usuario clasificador sin reutilizar la tabla <code>users</code> del monolito.</td>
+                        </tr>
+                        <tr>
+                            <td><code>clasificaciones_cloud</code></td>
+                            <td><code>id, concepto_id, libro_isbn, clasificador_id, modelo_cloud, fecha_clasificacion, ip_origen, cliente_tipo, cliente_id</code></td>
+                            <td>PK: <code>id</code><br>FK: <code>concepto_id -> concepts</code><br>FK: <code>libro_isbn -> books</code><br>FK: <code>clasificador_id -> clasificadores</code><br>CHECK: <code>modelo_cloud IN ('IaaS','PaaS','SaaS','FaaS')</code><br><strong>UNIQUE(clasificador_id, concepto_id)</strong></td>
+                            <td>Registro transaccional de clasificaciones con auditoría técnica y prevención absoluta de clasificaciones duplicadas por el mismo usuario.</td>
+                        </tr>
+                        <tr>
+                            <td><code>clientes_servidos</code></td>
+                            <td><code>id, tipo_cliente, identificador_cliente, peticiones_atendidas, ultima_peticion</code></td>
+                            <td>PK: <code>id</code><br>UNIQUE: <code>identificador_cliente</code></td>
+                            <td>Métricas de telemetría y auditoría de clientes SOAP que consumen el servicio.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="callout callout-info">
+                <strong>🔒 Política de Mínimo Privilegio en PostgreSQL:</strong>
+                Se define el rol <code>soap_app_user</code> que tiene únicamente <code>GRANT SELECT</code> sobre las tablas del monolito (<code>books</code>, <code>concepts</code>, <code>book_concepts</code>, <code>categories</code>) y <code>GRANT SELECT, INSERT, UPDATE</code> sobre las tablas propias (<code>clasificadores</code>, <code>clasificaciones_cloud</code>, <code>clientes_servidos</code>), eliminando riesgos de alteración involuntaria.
+            </div>
+        </section>
+
+        <!-- Sección 5: Contrato WSDL / XSD -->
+        <section id="sec5" class="report-section">
+            <div class="section-header">
+                <span class="section-number">05</span>
+                <h2 class="section-title">Contrato WSDL y Tipos XSD (Auditoría)</h2>
+            </div>
+            <p>El contrato formal se encuentra publicado en el endpoint <code>/soap?wsdl</code> bajo el target namespace <code>http://udem.edu/iac/library/soap</code>.</p>
+            
+            <h3>Matriz de Auditoría del Contrato (Superficie de Exposición)</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Dato / Campo Interno</th>
+                            <th>¿Se expone en WSDL?</th>
+                            <th>Transformación / Política</th>
+                            <th>Justificación Técnica de Seguridad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>concepts.id</code>, <code>concepts.name</code>, <code>concepts.definition</code></td>
+                            <td><span class="badge badge-success">SÍ</span></td>
+                            <td>Directo en <code>ConceptoPendienteType</code></td>
+                            <td>Necesarios para que el clasificador lea la definición y asigne el modelo Cloud correcto.</td>
+                        </tr>
+                        <tr>
+                            <td><code>books.isbn</code>, <code>books.title</code>, <code>books.year</code></td>
+                            <td><span class="badge badge-success">SÍ</span></td>
+                            <td>Directo</td>
+                            <td>Contexto bibliográfico indispensable para la clasificación temática.</td>
+                        </tr>
+                        <tr>
+                            <td><code>books.price</code>, <code>books.stock</code>, <code>books.format</code></td>
+                            <td><span class="badge badge-danger">NO</span></td>
+                            <td>Ocultado deliberadamente</td>
+                            <td>Datos comerciales y de inventario innecesarios para la tarea de clasificación.</td>
+                        </tr>
+                        <tr>
+                            <td><code>users.*</code> (Password hash, roles)</td>
+                            <td><span class="badge badge-danger">NO</span></td>
+                            <td>Aislado completamente</td>
+                            <td>Información crítica de seguridad; el módulo SOAP gestiona sus propios clasificadores.</td>
+                        </tr>
+                        <tr>
+                            <td><code>clasificaciones_cloud.ip_origen</code>, <code>cliente_id</code></td>
+                            <td><span class="badge badge-warning">SÓLO EN AUDITORÍA</span></td>
+                            <td>Se recibe/captura pero no se devuelve al cliente</td>
+                            <td>Evita divulgar detalles de red interna a clientes de escritorio.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sección 6: Operaciones -->
+        <section id="sec6" class="report-section">
+            <div class="section-header">
+                <span class="section-number">06</span>
+                <h2 class="section-title">Operaciones Implementadas</h2>
+            </div>
+            <p>El servicio implementa 4 operaciones bien delimitadas:</p>
+            <ul>
+                <li><strong><code>ObtenerConceptosPendientes</code>:</strong> Retorna la lista de conceptos del catálogo pendientes por clasificar por un usuario dado, enriquecidos con título del libro y categoría.</li>
+                <li><strong><code>RegistrarClasificacion</code>:</strong> Valida identidad, modelo de servicio (<code>IaaS | PaaS | SaaS | FaaS</code>), verifica unicidad y persiste la clasificación retornando ID de transacción.</li>
+                <li><strong><code>ObtenerProgresoUsuario</code>:</strong> Calcula en tiempo real el conteo de conceptos clasificados, conceptos pendientes y porcentaje de avance del clasificador.</li>
+                <li><strong><code>ObtenerEstadisticasPorModelo</code> (Tarea 1):</strong> Operación administrativa sensible protegida por WS-Security que entrega el desglose métrico global del catálogo.</li>
+            </ul>
+        </section>
+
+        <!-- Sección 7: Mensajería y Faults -->
+        <section id="sec7" class="report-section">
+            <div class="section-header">
+                <span class="section-number">07</span>
+                <h2 class="section-title">Ejemplos de SOAP Request, Response y Faults</h2>
+            </div>
+            
+            <h3>1. Solicitud Exitosa: RegistrarClasificacion</h3>
+            <div class="code-block">
+                <div class="code-header"><span>SOAP REQUEST (XML)</span></div>
+                <pre>
+&lt;soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://udem.edu/iac/library/soap"&gt;
+    &lt;soapenv:Header/&gt;
+    &lt;soapenv:Body&gt;
+        &lt;tns:RegistrarClasificacionRequest&gt;
+            &lt;tns:nombre&gt;Alex&lt;/tns:nombre&gt;
+            &lt;tns:apellidos&gt;Morales&lt;/tns:apellidos&gt;
+            &lt;tns:email&gt;alex.morales@udem.edu&lt;/tns:email&gt;
+            &lt;tns:concepto_id&gt;1&lt;/tns:concepto_id&gt;
+            &lt;tns:libro_isbn&gt;9780134092669&lt;/tns:libro_isbn&gt;
+            &lt;tns:modelo_cloud&gt;IaaS&lt;/tns:modelo_cloud&gt;
+            &lt;tns:cliente_tipo&gt;Desktop-GUI-Client&lt;/tns:cliente_tipo&gt;
+            &lt;tns:cliente_id&gt;CLI-DESK-01&lt;/tns:cliente_id&gt;
+        &lt;/tns:RegistrarClasificacionRequest&gt;
+    &lt;/soapenv:Body&gt;
+&lt;/soapenv:Envelope&gt;
+                </pre>
+            </div>
+
+            <h3>2. Respuesta Exitosa (HTTP 200 OK)</h3>
+            <div class="code-block">
+                <div class="code-header"><span>SOAP RESPONSE (XML)</span></div>
+                <pre>
+&lt;soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://udem.edu/iac/library/soap"&gt;
+    &lt;soapenv:Body&gt;
+        &lt;tns:RegistrarClasificacionResponse&gt;
+            &lt;tns:status&gt;SUCCESS&lt;/tns:status&gt;
+            &lt;tns:mensaje&gt;Concepto 1 clasificado exitosamente como 'IaaS' por alex.morales@udem.edu.&lt;/tns:mensaje&gt;
+            &lt;tns:clasificacion_id&gt;1&lt;/tns:clasificacion_id&gt;
+            &lt;tns:fecha_registro&gt;2026-09-01T16:30:15.123456&lt;/tns:fecha_registro&gt;
+        &lt;/tns:RegistrarClasificacionResponse&gt;
+    &lt;/soapenv:Body&gt;
+&lt;/soapenv:Envelope&gt;
+                </pre>
+            </div>
+
+            <h3>3. Error Controlado: Clasificación Duplicada (SOAP Fault - HTTP 409)</h3>
+            <div class="code-block">
+                <div class="code-header"><span>SOAP FAULT RESPONSE (XML - HTTP 409 CONFLICT)</span></div>
+                <pre>
+&lt;soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://udem.edu/iac/library/soap"&gt;
+    &lt;soapenv:Body&gt;
+        &lt;soapenv:Fault&gt;
+            &lt;faultcode&gt;soapenv:Client&lt;/faultcode&gt;
+            &lt;faultstring&gt;Conflicto: Clasificación duplicada.&lt;/faultstring&gt;
+            &lt;detail&gt;
+                &lt;tns:SoapFaultDetail&gt;
+                    &lt;tns:codigo_error&gt;ERR_DUPLICATE_CLASSIFICATION_409&lt;/tns:codigo_error&gt;
+                    &lt;tns:mensaje&gt;El usuario con email 'alex.morales@udem.edu' ya ha clasificado previamente el concepto 1.&lt;/tns:mensaje&gt;
+                    &lt;tns:timestamp&gt;2026-09-01T16:30:20.654321&lt;/tns:timestamp&gt;
+                &lt;/tns:SoapFaultDetail&gt;
+            &lt;/detail&gt;
+        &lt;/soapenv:Fault&gt;
+    &lt;/soapenv:Body&gt;
+&lt;/soapenv:Envelope&gt;
+                </pre>
+            </div>
+        </section>
+
+        <!-- Sección 8: Seguridad y WS-Security -->
+        <section id="sec8" class="report-section">
+            <div class="section-header">
+                <span class="section-number">08</span>
+                <h2 class="section-title">Seguridad y WS-Security (Tarea 1)</h2>
+            </div>
+            <p>La operación <code>ObtenerEstadisticasPorModelo</code> expone métricas estratégicas agregadas del catálogo, por lo que se encuentra resguardada mediante <strong>WS-Security (UsernameToken)</strong> en el encabezado SOAP:</p>
+            
+            <div class="code-block">
+                <div class="code-header"><span>ENCABEZADO SOAP CON WS-SECURITY USERNAME TOKEN</span></div>
+                <pre>
+&lt;soapenv:Header&gt;
+    &lt;wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"&gt;
+        &lt;wsse:UsernameToken&gt;
+            &lt;wsse:Username&gt;admin_clasificador&lt;/wsse:Username&gt;
+            &lt;wsse:Password&gt;CloudSecure2026!&lt;/wsse:Password&gt;
+        &lt;/wsse:UsernameToken&gt;
+    &lt;/wsse:Security&gt;
+&lt;/soapenv:Header&gt;
+                </pre>
+            </div>
+
+            <p>Si la solicitud omite el encabezado o las credenciales no concuerdan, el servidor rechaza la petición con un <code>SOAP Fault</code> con código <code>ERR_WS_SECURITY_UNAUTHORIZED</code> y estado <strong>HTTP 401 Unauthorized</strong> sin acceder a la base de datos.</p>
+        </section>
+
+        <!-- Sección 9: Clientes de Escritorio -->
+        <section id="sec9" class="report-section">
+            <div class="section-header">
+                <span class="section-number">09</span>
+                <h2 class="section-title">Aplicaciones de Escritorio como Clientes SOAP</h2>
+            </div>
+            <p>Se desarrolló una aplicación de escritorio interactiva en <strong>Python (Tkinter)</strong> ubicada en <code>client/desktop_classifier.py</code> con tema oscuro moderno:</p>
+            <ul>
+                <li><strong>Captura de Identidad:</strong> Formulario para registrar nombre, apellidos y email del clasificador.</li>
+                <li><strong>Catálogo Dinámico:</strong> Tabla Treeview que carga conceptos pendientes vía SOAP y muestra la definición completa del libro seleccionado.</li>
+                <li><strong>Acción Transaccional:</strong> Selector de modelo (<code>IaaS</code>, <code>PaaS</code>, <code>SaaS</code>, <code>FaaS</code>) y botón de envío SOAP POST.</li>
+                <li><strong>Manejo de SOAP Faults (Tarea 2):</strong> La GUI intercepta los códigos de falla (como 409 duplicado) y presenta alertas informativas claras sin exponer stack traces ni internals de PostgreSQL.</li>
+                <li><strong>Modal WS-Security:</strong> Ventana protegida para autenticarse y consultar el panel de estadísticas globales.</li>
+            </ul>
+        </section>
+
+        <!-- Sección 10: Interoperabilidad -->
+        <section id="sec10" class="report-section">
+            <div class="section-header">
+                <span class="section-number">10</span>
+                <h2 class="section-title">Interoperabilidad con un Segundo Lenguaje (Tarea 4)</h2>
+            </div>
+            <p>Se implementó un cliente desacoplado utilizando la biblioteca estándar <strong>Zeep</strong> (<code>tests/client_zeep_interop.py</code>). El cliente lee el archivo <code>library-classifier.wsdl</code>, compila los tipos XSD en tiempo de ejecución y genera los proxies de servicio automáticamente.</p>
+            
+            <div class="callout callout-info">
+                <strong>Resultado de Interoperabilidad:</strong> El WSDL sirvió como contrato estricto de integración. Un cliente desarrollado en Java (<code>wsimport</code>), .NET (<code>dotnet-svcutil</code>) o Python (<code>zeep</code>) puede consumir el servicio sin conocer que el backend está construido en Flask o que utiliza PostgreSQL.
+            </div>
+        </section>
+
+        <!-- Sección 11: Plan de Pruebas -->
+        <section id="sec11" class="report-section">
+            <div class="section-header">
+                <span class="section-number">11</span>
+                <h2 class="section-title">Plan de Pruebas y Resultados</h2>
+            </div>
+            <p>Suite automatizada ejecutada con <code>unittest</code> (8/8 casos exitosos):</p>
+            
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Caso de Prueba</th>
+                            <th>Entrada</th>
+                            <th>Resultado Esperado</th>
+                            <th>Resultado Obtenido</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>P01</strong></td>
+                            <td>Obtener Conceptos Pendientes</td>
+                            <td>Envelope con <code>clasificador_email</code></td>
+                            <td>HTTP 200 + Lista de conceptos</td>
+                            <td>Lista XML válida parseada con éxito</td>
+                            <td><span class="badge badge-success">PASSED</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>P02</strong></td>
+                            <td>Registrar Clasificación Válida</td>
+                            <td>Concepto 1, ISBN, Modelo IaaS</td>
+                            <td>HTTP 200 + ID Clasificación</td>
+                            <td>Status SUCCESS y registro en BD</td>
+                            <td><span class="badge badge-success">PASSED</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>N01</strong></td>
+                            <td>Repetir Clasificación (Duplicado)</td>
+                            <td>Mismo usuario y mismo concepto</td>
+                            <td>SOAP Fault + HTTP 409 Conflict</td>
+                            <td>ERR_DUPLICATE_CLASSIFICATION_409</td>
+                            <td><span class="badge badge-success">PASSED</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>N02</strong></td>
+                            <td>Concepto Inexistente</td>
+                            <td><code>concepto_id = 999999</code></td>
+                            <td>SOAP Fault de Cliente (HTTP 400)</td>
+                            <td>ERR_CONCEPT_NOT_FOUND</td>
+                            <td><span class="badge badge-success">PASSED</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>N03</strong></td>
+                            <td>Modelo Cloud Inválido</td>
+                            <td><code>modelo_cloud = 'ModeloX'</code></td>
+                            <td>SOAP Fault de Validación (HTTP 400)</td>
+                            <td>ERR_VALIDATION_INVALID_CLOUD_MODEL</td>
+                            <td><span class="badge badge-success">PASSED</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>N04</strong></td>
+                            <td>XML Mal Formado</td>
+                            <td>Sintaxis XML rota</td>
+                            <td>SOAP Fault sin tocar SQL (HTTP 400)</td>
+                            <td>ERR_SOAP_ENVELOPE_INVALID</td>
+                            <td><span class="badge badge-success">PASSED</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>T01</strong></td>
+                            <td>WS-Security Autorizado</td>
+                            <td>UsernameToken válido</td>
+                            <td>HTTP 200 + Estadísticas</td>
+                            <td>Conteo IaaS/PaaS/SaaS/FaaS retornado</td>
+                            <td><span class="badge badge-success">PASSED</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>T02</strong></td>
+                            <td>WS-Security No Autorizado</td>
+                            <td>Password erróneo</td>
+                            <td>SOAP Fault + HTTP 401 Unauthorized</td>
+                            <td>ERR_WS_SECURITY_UNAUTHORIZED</td>
+                            <td><span class="badge badge-success">PASSED</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sección 12: Evidencias de BD -->
+        <section id="sec12" class="report-section">
+            <div class="section-header">
+                <span class="section-number">12</span>
+                <h2 class="section-title">Evidencias de Persistencia en PostgreSQL</h2>
+            </div>
+            <p>Consultas de verificación ejecutadas tras las sesiones de clasificación:</p>
+            
+            <div class="code-block">
+                <div class="code-header"><span>SQL: SELECT * FROM clasificaciones_cloud;</span></div>
+                <pre>
+ id | concepto_id |  libro_isbn   | clasificador_id | modelo_cloud |   fecha_clasificacion   | ip_origen  |    cliente_tipo     | cliente_id 
+----+-------------+---------------+-----------------+--------------+-------------------------+------------+---------------------+------------
+  1 |           1 | 9780134092669 |               1 | IaaS         | 2026-09-01 16:30:15-06  | 127.0.0.1  | Desktop-Tkinter-GUI | GUI-USER-01
+  2 |           2 | 9780134092669 |               1 | PaaS         | 2026-09-01 16:32:40-06  | 127.0.0.1  | Desktop-Tkinter-GUI | GUI-USER-01
+                </pre>
+            </div>
+
+            <div class="code-block">
+                <div class="code-header"><span>SQL: SELECT * FROM clientes_servidos;</span></div>
+                <pre>
+ id |    tipo_cliente     | identificador_cliente | peticiones_atendidas |      ultima_peticion       
+----+---------------------+-----------------------+----------------------+----------------------------
+  1 | Desktop-Tkinter-GUI | GUI-USER-01           |                    6 | 2026-09-01 16:35:10.892-06
+                </pre>
+            </div>
+        </section>
+
+        <!-- Sección 13: Decisiones de Ingeniería -->
+        <section id="sec13" class="report-section">
+            <div class="section-header">
+                <span class="section-number">13</span>
+                <h2 class="section-title">Decisiones de Ingeniería y Trade-offs</h2>
+            </div>
+            
+            <div class="decision-card">
+                <div class="decision-flow">Necesidad: Construcción y Procesamiento SOAP &rarr; Decisión: Parsing manual con xml.etree &rarr; Justificación: Control estricto del sobre &rarr; Ventajas: Sin dependencias pesadas &rarr; Limitaciones: Requiere construir XML explícitamente</div>
+                <p>Al implementar el parser manual, se evita la sobrecarga y "caja negra" de frameworks como Spyne, permitiendo un manejo exacto de los códigos HTTP y namespaces.</p>
+            </div>
+
+            <div class="decision-card">
+                <div class="decision-flow">Necesidad: Proteger datos del monolito &rarr; Decisión: Tablas independientes y roles SQL &rarr; Justificación: Principio de mínimo privilegio &rarr; Ventajas: Cero riesgo de corrupción &rarr; Limitaciones: Requiere sincronización por claves foráneas</div>
+                <p>Las tablas <code>clasificadores</code> y <code>clasificaciones_cloud</code> no tocan la tabla <code>users</code> del monolito, preservando la integridad del negocio original.</p>
+            </div>
+
+            <div class="decision-card">
+                <div class="decision-flow">Necesidad: Contrato estricto e interoperable &rarr; Decisión: Publicar WSDL en /soap?wsdl &rarr; Justificación: Estandarización de interfaz &rarr; Ventajas: Clientes autogenerables &rarr; Limitaciones: Menor flexibilidad ante cambios dinámicos</div>
+                <p>El contrato WSDL define formalmente los tipos XSD para que clientes en cualquier lenguaje (Java, .NET, Python) se integren sin ambigüedades.</p>
+            </div>
+        </section>
+
+        <!-- Sección 14: Problemas y Soluciones -->
+        <section id="sec14" class="report-section">
+            <div class="section-header">
+                <span class="section-number">14</span>
+                <h2 class="section-title">Problemas Encontrados y Soluciones Técnicas</h2>
+            </div>
+            <ul>
+                <li><strong>1. Codificación en Consola Windows:</strong> En entornos con codepage CP1252, ciertos caracteres generaban <code>UnicodeEncodeError</code>. <em>Solución:</em> Se reconfiguró la salida estándar a UTF-8 y se utilizaron indicadores limpios tipo <code>[OK]</code> y <code>[PASSED]</code>.</li>
+                <li><strong>2. Control de Concurrencia y Unicidad:</strong> Evitar condiciones de carrera al clasificar dos veces el mismo concepto. <em>Solución:</em> Se colocó la restricción <code>UNIQUE (clasificador_id, concepto_id)</code> en base de datos y se interceptó a nivel de capa de persistencia para mapearla a un <code>SOAP Fault 409</code>.</li>
+                <li><strong>3. Namespace Parsing:</strong> Los prefijos de namespace en XML a veces provocaban lecturas nulas en los hijos. <em>Solución:</em> Se creó la función auxiliar <code>get_child_text()</code> en <code>soap/envelope.py</code> que extrae el contenido local-name de forma robusta.</li>
+            </ul>
+        </section>
+
+        <!-- Sección 15: Métricas vs REST -->
+        <section id="sec15" class="report-section">
+            <div class="section-header">
+                <span class="section-number">15</span>
+                <h2 class="section-title">Métricas para Comparación Futura con REST (Tarea 5)</h2>
+            </div>
+            <p>Resultados empíricos obtenidos con el script <code>tests/soap_metrics_benchmark.py</code>:</p>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">71.74%</div>
+                    <div class="metric-label">Overhead XML en Solicitud</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">70.23%</div>
+                    <div class="metric-label">Overhead XML en Respuesta</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">1,622</div>
+                    <div class="metric-label">Líneas de Código Efectivas (LOC)</div>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mensaje</th>
+                            <th>Tamaño JSON (Datos de Negocio)</th>
+                            <th>Tamaño SOAP XML (Envelope + Namespaces)</th>
+                            <th>Overhead Estructural</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>RegistrarClasificacionRequest</code></td>
+                            <td>217 bytes</td>
+                            <td>768 bytes</td>
+                            <td><strong>+71.74% de bytes extra</strong></td>
+                        </tr>
+                        <tr>
+                            <td><code>RegistrarClasificacionResponse</code></td>
+                            <td>181 bytes</td>
+                            <td>608 bytes</td>
+                            <td><strong>+70.23% de bytes extra</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sección 16: Uso de IA -->
+        <section id="sec16" class="report-section">
+            <div class="section-header">
+                <span class="section-number">16</span>
+                <h2 class="section-title">Uso de Inteligencia Artificial y Prompts Utilizados</h2>
+            </div>
+            <p>Siguiendo la política del curso (<em>comprender &rarr; revisar &rarr; probar &rarr; validar &rarr; corregir &rarr; justificar</em>):</p>
+            <ul>
+                <li><strong>Prompts Clave:</strong>
+                    <ul>
+                        <li><em>"Diseña un esquema XSD estricto para operaciones de clasificación de catálogo sin exponer campos sensibles de auditoría interna."</em></li>
+                        <li><em>"Genera un manejador de SOAP Faults en Python que devuelva código HTTP 409 ante violaciones de unicidad en PostgreSQL."</em></li>
+                    </ul>
+                </li>
+                <li><strong>Qué se aceptó:</strong> La estructura base del WSDL y las definiciones XSD de tipos complejos.</li>
+                <li><strong>Qué se modificó:</strong> El validador de WS-Security se desacopló para operar tanto sobre XML manual como sobre clientes Zeep, agregando soporte de transacciones y rollback.</li>
+                <li><strong>Qué se rechazó:</strong> Se rechazaron sugerencias iniciales de usar bibliotecas de alto nivel que ocultaban la construcción del Envelope, manteniendo la exigencia académica del XML manual.</li>
+            </ul>
+        </section>
+
+        <!-- Sección 17: Conclusiones y Reflexión -->
+        <section id="sec17" class="report-section">
+            <div class="section-header">
+                <span class="section-number">17</span>
+                <h2 class="section-title">Conclusiones Personales y Preguntas de Reflexión</h2>
+            </div>
+            
+            <h3>Respuestas a las Preguntas de Reflexión Técnica (PDF Pág. 9):</h3>
+            <ol>
+                <li><strong>¿Qué pasaría si agregas un campo obligatorio a RegistrarClasificacion sin actualizar a los clientes?</strong> El validador XML o el parser del servidor rechazará la petición con un <code>SOAP Fault (soapenv:Client)</code>, ya que el contrato WSDL/XSD impone una validación formal que rompe la compatibilidad hacia atrás si los clientes no envían el campo.</li>
+                <li><strong>¿Qué información del WSDL podría ser útil para un atacante y qué no debería exponerse?</strong> El WSDL puede revelar la arquitectura interna, nombres de tablas/columnas, endpoints internos y versiones. No deben exponerse estructuras de base de datos completas, contraseñas, ni rutas físicas del servidor.</li>
+                <li><strong>¿Por qué el tipado XSD aporta certeza al contrato?</strong> Porque define de forma no ambigua los tipos de datos (enteros, cadenas, fechas, enumeraciones permitidas), permitiendo validar los mensajes antes de que ingresen a la lógica de negocio.</li>
+                <li><strong>¿Qué partes del Envelope fueron boilerplate y cuáles dependieron de la operación?</strong> Boilerplate: <code>&lt;soapenv:Envelope&gt;</code>, <code>&lt;soapenv:Header&gt;</code>, <code>&lt;soapenv:Body&gt;</code> y declaraciones de namespaces (70% del mensaje). Dependientes: los elementos hijos dentro del cuerpo (datos específicos de la operación).</li>
+                <li><strong>¿Cuándo justificarías el overhead de XML frente a un formato más ligero?</strong> En entornos empresariales de banca, telecomunicaciones, gobierno o servicios legacy donde la rigidez del contrato (WSDL), la seguridad a nivel de mensaje (WS-Security/WS-Signature) y el no-repudio sean requisitos mandatorios más prioritarios que el ancho de banda.</li>
+                <li><strong>¿Por qué un SOAP Fault es parte del contrato y no sólo un error HTTP?</strong> Porque SOAP Fault está estandarizado en el protocolo SOAP y permite transportar información estructurada del error (código de falla, subcódigo, detalle de negocio) independientemente del medio de transporte utilizado (HTTP, SMTP, JMS).</li>
+                <li><strong>¿Cómo debe reaccionar una GUI ante un Fault de cliente frente a un Fault de servidor?</strong> Ante un Fault de cliente (400/409): mostrar una alerta interactiva clara al usuario indicando qué dato corregir (ej. "Clasificación duplicada"). Ante un Fault de servidor (500): mostrar un mensaje general de servicio no disponible y sugerir intentar más tarde, registrando el error en el log local.</li>
+                <li><strong>¿Qué riesgo existe porque el módulo SOAP y el monolito compartan la misma base de datos?</strong> Riesgo de contención en bloqueos de tablas, acoplamiento al esquema y posible degradación de rendimiento por consultas cruzadas no indexadas.</li>
+                <li><strong>¿Qué ocurriría si el monolito renombra books.isbn? ¿Cómo reducirías ese acoplamiento?</strong> El módulo SOAP fallaría al consultar esa columna. Para reducir el acoplamiento se deben utilizar vistas desacopladas (<code>CREATE VIEW</code>) o una capa de API intermedia en lugar de acceso directo por SQL.</li>
+                <li><strong>¿Dónde debe aplicarse autenticación y qué problema resuelve WS-Security?</strong> Debe aplicarse en el encabezado del mensaje SOAP. WS-Security resuelve el problema de seguridad de extremo a extremo a nivel de mensaje (Message-Level Security), permitiendo que el mensaje viaje seguro a través de múltiples intermediarios y proxies sin depender exclusivamente de HTTPS punto a punto.</li>
+                <li><strong>¿Es suficiente confiar en el correo enviado por el cliente para identificar al usuario?</strong> No es suficiente en entornos productivos críticos, ya que un cliente malicioso puede suplantar la identidad simplemente enviando otro correo. Se requiere un mecanismo de autenticación criptográfica como tokens firmados o UsernameToken con credenciales.</li>
+                <li><strong>¿En qué escenarios empresariales seguirías eligiendo SOAP en 2026?</strong> En integraciones con sistemas bancarios centrales (Core Banking), plataformas gubernamentales (SAT, Facturación electrónica CFDI/PACs), aduanas y sistemas ERP heredados (SAP) que exigen contratos formales inmutables y estándares WS-* certificados.</li>
+            </ol>
+        </section>
+
+        <!-- Sección 18: Descargas -->
+        <section id="sec18" class="report-section">
+            <div class="section-header">
+                <span class="section-number">18</span>
+                <h2 class="section-title">Descargas y Artefactos del Proyecto</h2>
+            </div>
+            <p>Accede y descarga directamente los archivos de contrato, persistencia y documentación técnica:</p>
+            
+            <div class="download-grid">
+                <div class="download-item">
+                    <div>
+                        <div class="download-title">📜 Contrato WSDL Oficial</div>
+                        <div class="download-desc">Contrato XML con tipos XSD, mensajes y binding SOAP 1.1.</div>
+                    </div>
+                    <a href="wsdl/library-classifier.wsdl" class="download-btn" download>Descargar WSDL</a>
+                </div>
+
+                <div class="download-item">
+                    <div>
+                        <div class="download-title">🗄️ Script SQL del Módulo</div>
+                        <div class="download-desc">Esquema de tablas propias, vistas, índices y mínimo privilegio.</div>
+                    </div>
+                    <a href="sql/soap_module.sql" class="download-btn" download>Descargar SQL</a>
+                </div>
+
+                <div class="download-item">
+                    <div>
+                        <div class="download-title">📘 Guía README.md</div>
+                        <div class="download-desc">Instrucciones de instalación, pruebas y ejecución paso a paso.</div>
+                    </div>
+                    <a href="../README.md" class="download-btn" download>Descargar README</a>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
