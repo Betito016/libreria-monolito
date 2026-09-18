@@ -41,6 +41,21 @@ class Config:
     # Validacion de correo: verificar que el dominio tenga registros MX
     VERIFY_EMAIL_MX = os.getenv('VERIFY_EMAIL_MX', 'True').lower() in ('true', '1', 't')
 
+    # --- Correo de verificacion (SMTP / Postfix) ---
+    MAIL_ENABLED = os.getenv('MAIL_ENABLED', 'True').lower() in ('true', '1', 't')
+    SMTP_HOST = os.getenv('SMTP_HOST', 'localhost')
+    SMTP_PORT = int(os.getenv('SMTP_PORT', '25'))
+    SMTP_USE_TLS = os.getenv('SMTP_USE_TLS', 'False').lower() in ('true', '1', 't')
+    SMTP_USER = os.getenv('SMTP_USER', '')
+    SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+    MAIL_FROM = os.getenv('MAIL_FROM', 'no-reply@libreria.local')
+
+    # URL publica del microservicio, usada para armar el enlace de verificacion
+    PUBLIC_BASE_URL = os.getenv('PUBLIC_BASE_URL', 'http://localhost:5000')
+
+    # Vigencia del token de verificacion
+    TOKEN_TTL_HOURS = int(os.getenv('TOKEN_TTL_HOURS', '24'))
+
     @classmethod
     def dsn(cls) -> str:
         return (

@@ -130,6 +130,98 @@ class UserRepository:
         except psycopg.OperationalError as exc:
             raise DatabaseUnavailableError(str(exc)) from exc
 
+    # ------------------------------------------------------------------
+    # Verificacion de correo por token
+    # ------------------------------------------------------------------
+    @classmethod
+    def create_verification_token(
+        cls, usuario_id: str, token_hash: str, email_destino: str, ttl_hours: int
+    ) -> Dict[str, Any]:
+        """Registra un token pendiente. Se guarda el hash, nunca el token."""
+        try:
+            with cls.pool().connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO verificaciones_email
+                            (usuario_id, token_hash, email_destino, expira_en)
+                        VALUES (%s, %s, %s, now() + make_interval(hours => %s))
+                        RETURNING id, creado_en, expira_en
+                        """,
+                        (usuario_id, token_hash, email_destino, ttl_hours),
+                    )
+                    return cur.fetchone()
+        except psycopg.OperationalError as exc:
+            raise DatabaseUnavailableError(str(exc)) from exc
+
+    @classmethod
+    def mark_token_sent(cls, token_id: int) -> None:
+        """Marca que el MTA acepto el mensaje."""
+        try:
+            with cls.pool().connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE verificaciones_email SET enviado = TRUE WHERE id = %s",
+                        (token_id,),
+                    )
+        except psycopg.OperationalError as exc:
+            raise DatabaseUnavailableError(str(exc)) from exc
+
+    @classmethod
+    def redeem_token(cls, token_hash: str) -> Dict[str, Any]:
+        """Canjea un token y marca el correo como verificado.
+
+        Todo ocurre en una sola transaccion para que no exista un estado
+        intermedio en el que el token quede consumido pero el usuario sin
+        verificar. Devuelve un dict con `resultado`:
+          - 'ok'         : verificado correctamente
+          - 'no_existe'  : el token no corresponde a ninguna solicitud
+          - 'ya_usado'   : el token ya se habia canjeado
+          - 'expirado'   : el token vencio
+        """
+        try:
+            with cls.pool().connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(
+                        """
+                        SELECT v.id, v.usuario_id, v.usado_en, v.expira_en,
+                               v.expira_en < now() AS vencido, u.email, u.nombre
+                        FROM verificaciones_email v
+                        JOIN usuarios u ON u.id = v.usuario_id
+                        WHERE v.token_hash = %s
+                        FOR UPDATE OF v
+                        """,
+                        (token_hash,),
+                    )
+                    fila = cur.fetchone()
+
+                    if not fila:
+                        return {'resultado': 'no_existe'}
+                    if fila['usado_en'] is not None:
+                        return {'resultado': 'ya_usado', 'email': fila['email']}
+                    if fila['vencido']:
+                        return {'resultado': 'expirado', 'email': fila['email']}
+
+                    cur.execute(
+                        "UPDATE verificaciones_email SET usado_en = now() WHERE id = %s",
+                        (fila['id'],),
+                    )
+                    cur.execute(
+                        """
+                        UPDATE usuarios
+                        SET email_verificado = TRUE, actualizado_en = now()
+                        WHERE id = %s
+                        RETURNING id, nombre, apellido_paterno, apellido_materno,
+                                  email, rol, activo, email_verificado
+                        """,
+                        (fila['usuario_id'],),
+                    )
+                    usuario = cur.fetchone()
+
+            return {'resultado': 'ok', 'usuario': usuario}
+        except psycopg.OperationalError as exc:
+            raise DatabaseUnavailableError(str(exc)) from exc
+
     @classmethod
     def find_by_id(cls, user_id: str) -> Optional[Dict[str, Any]]:
         """Recupera al usuario de la sesion activa. No devuelve password_hash."""

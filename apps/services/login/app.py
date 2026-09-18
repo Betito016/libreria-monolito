@@ -21,6 +21,7 @@ from config.config import Config
 from api.responses import api_response, error_response, parse_request_body
 from api.openapi import build_openapi_spec, SWAGGER_UI_HTML
 from auth.email_validator import validate_email
+from auth.mailer import enviar_verificacion, generar_token, hash_token
 from auth.passwords import hash_password, verify_password, validate_password_strength
 from db.database import (
     UserRepository,
@@ -116,13 +117,25 @@ def register():
         )
 
     try:
+        # El correo NO se marca como verificado aqui: la sintaxis y el
+        # registro MX prueban que el dominio puede recibir correo, no que
+        # el buzon exista ni que sea de quien se registra. Eso solo lo
+        # prueba el token que viaja por correo y regresa a /verify.
         usuario = UserRepository.create_user(
             nombre=valores['nombre'],
             apellido_paterno=valores['apellido_paterno'],
             apellido_materno=valores['apellido_materno'] or None,
             email=valores['email'],
             password_hash=hash_password(valores['password']),
-            email_verificado=True,
+            email_verificado=False,
+        )
+
+        token, token_hash = generar_token()
+        registro_token = UserRepository.create_verification_token(
+            usuario_id=usuario['id'],
+            token_hash=token_hash,
+            email_destino=usuario['email'],
+            ttl_hours=Config.TOKEN_TTL_HOURS,
         )
     except EmailAlreadyRegisteredError as exc:
         return error_response(
@@ -134,16 +147,83 @@ def register():
             'ERR_BASE_DATOS', 'El servicio de base de datos no esta disponible.', status=503
         )
 
-    logger.info(f"Usuario registrado: {valores['email']}")
+    enviado, detalle_envio = enviar_verificacion(
+        destinatario=usuario['email'], nombre=usuario['nombre'], token=token
+    )
+    if enviado:
+        UserRepository.mark_token_sent(registro_token['id'])
+
+    logger.info(f"Usuario registrado: {valores['email']} (correo enviado: {enviado})")
     return api_response(
         'registro',
         {
             'estado': 'exito',
-            'mensaje': 'Usuario registrado correctamente.',
-            'validacion_email': detalle,
+            'mensaje': 'Usuario registrado. Revisa tu correo para verificar la cuenta.',
+            'validacion_dominio': detalle,
+            'correo_verificacion': {
+                'enviado': enviado,
+                'detalle': detalle_envio,
+                'destinatario': usuario['email'],
+                'expira_en': str(registro_token['expira_en']),
+            },
             'usuario': _usuario_publico(usuario),
         },
         status=201,
+    )
+
+
+# ----------------------------------------------------------------------
+# GET|POST /verify
+# ----------------------------------------------------------------------
+@app.route('/verify', methods=['GET', 'POST', 'OPTIONS'])
+def verify():
+    """Canjea el token enviado por correo y marca el correo como verificado.
+
+    Acepta GET (para que el enlace del correo funcione desde el navegador)
+    y POST (para clientes programaticos).
+    """
+    if request.method == 'OPTIONS':
+        return api_response('preflight', {'estado': 'ok'})
+
+    token = (request.args.get('token') or parse_request_body().get('token') or '').strip()
+    if not token:
+        return error_response(
+            'ERR_TOKEN_FALTANTE', 'Se requiere el token de verificacion.', status=400
+        )
+
+    try:
+        resultado = UserRepository.redeem_token(hash_token(token))
+    except DatabaseUnavailableError:
+        return error_response(
+            'ERR_BASE_DATOS', 'El servicio de base de datos no esta disponible.', status=503
+        )
+
+    if resultado['resultado'] == 'no_existe':
+        return error_response(
+            'ERR_TOKEN_INVALIDO', 'El token de verificacion no es valido.', status=400
+        )
+    if resultado['resultado'] == 'ya_usado':
+        return error_response(
+            'ERR_TOKEN_YA_USADO',
+            'Este token ya fue utilizado. El correo ya estaba verificado.',
+            status=409,
+        )
+    if resultado['resultado'] == 'expirado':
+        return error_response(
+            'ERR_TOKEN_EXPIRADO',
+            'El token de verificacion vencio. Solicita uno nuevo.',
+            status=410,
+        )
+
+    usuario = resultado['usuario']
+    logger.info(f"Correo verificado: {usuario['email']}")
+    return api_response(
+        'verificacion',
+        {
+            'estado': 'exito',
+            'mensaje': 'Correo verificado correctamente.',
+            'usuario': _usuario_publico(usuario),
+        },
     )
 
 
@@ -299,7 +379,7 @@ def index():
             'formato_por_defecto': 'xml',
             'endpoints': [
                 'POST /register', 'POST /login', 'POST /logout',
-                'GET /session', 'GET /health',
+                'GET /session', 'GET /health', 'GET|POST /verify',
             ],
         },
     )

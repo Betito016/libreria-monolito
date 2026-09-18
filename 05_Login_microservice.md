@@ -1,69 +1,43 @@
 # 05 - Microservicio de Autenticación
 
-Microservicio independiente de autenticación y gestión básica de usuarios, desarrollado con **Python + Flask + Psycopg 3 + PostgreSQL**, integrado a la base de datos existente del proyecto (`library_db`) y con respuestas en **XML y JSON**.
+Microservicio independiente de autenticación y gestión básica de usuarios: **Python + Flask + Psycopg 3 + PostgreSQL**, sobre la base existente del proyecto (`library_db`), con respuestas en **XML y JSON**.
 
-Código: [`apps/services/login/`](apps/services/login/) · Migración: [`db/07_auth_microservice.sql`](db/07_auth_microservice.sql)
-
----
-
-## Endpoints implementados
-
-| Método | Endpoint    | Función                                          | Verificado |
-|--------|-------------|--------------------------------------------------|------------|
-| POST   | `/register` | Registrar un nuevo usuario                        | ✔ |
-| POST   | `/login`    | Autenticar al usuario e iniciar sesión            | ✔ |
-| POST   | `/logout`   | Cerrar la sesión                                  | ✔ |
-| GET    | `/session`  | Consultar si existe una sesión autenticada        | ✔ |
-| GET    | `/health`   | Verificar el estado del microservicio y PostgreSQL | ✔ |
-
-Todos responden **XML por defecto** y JSON con `?format=json`.
+Código: [`apps/services/login/`](apps/services/login/)
+Migraciones: [`db/07_auth_microservice.sql`](db/07_auth_microservice.sql) · [`db/08_email_verification.sql`](db/08_email_verification.sql)
 
 ---
 
-## Resultados (evidencia)
+## Endpoints
 
-**Swagger UI documentando los cinco endpoints en XML y JSON:**
+| Método | Endpoint | Función |
+|---|---|---|
+| POST | `/register` | Registrar un nuevo usuario y enviar correo de verificación |
+| POST | `/login` | Autenticar al usuario e iniciar sesión |
+| POST | `/logout` | Cerrar la sesión |
+| GET | `/session` | Consultar si existe una sesión autenticada |
+| GET | `/health` | Verificar el estado del microservicio y PostgreSQL |
+| GET/POST | `/verify` | Canjear el token del correo y marcar el correo como verificado |
 
-![Swagger del microservicio de login](evidencia/login-swagger.png)
+XML por defecto; JSON con `?format=json`.
 
-**Pruebas de los endpoints (registro, login, sesión, logout):**
+---
 
-![Pruebas de endpoints](evidencia/login-endpoints.png)
+## Evidencia
 
-**Migración aplicada y datos en PostgreSQL:**
+Todas las pruebas se ejecutaron con `curl` contra el microservicio desplegado en la instancia GCP (puerto 5000).
 
-![Base de datos migrada](evidencia/login-base-datos.png)
+### 1. `/health` — comprueba PostgreSQL de verdad
 
-### Salidas verificadas
-
-`POST /register` — XML por defecto, con validación de correo por registro MX:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<registro>
-  <estado>exito</estado>
-  <mensaje>Usuario registrado correctamente.</mensaje>
-  <validacion_email>MX encontrado: alt1.gmail-smtp-in.l.google.com</validacion_email>
-  <usuario>
-    <id>8411ac4c-9ad3-4f89-b6fc-34cee4550d0f</id>
-    <nombre>Humberto</nombre>
-    <apellido_paterno>Vargas</apellido_paterno>
-    <apellido_materno>Salinas</apellido_materno>
-    <email>humberto.prueba@gmail.com</email>
-    <rol>cliente</rol>
-    <email_verificado>true</email_verificado>
-  </usuario>
-</registro>
+```bash
+curl -s "http://HOST:5000/health?format=json"
 ```
-
-`GET /session?format=json` con la cookie de sesión activa:
-
 ```json
-{"autenticado": true, "usuario": {"nombre": "Humberto", "apellido_paterno": "Vargas",
- "apellido_materno": "Salinas", "email": "humberto.prueba@gmail.com", "rol": "cliente"}}
+{"estado": "ok", "microservicio": "login",
+ "postgresql": {"base_datos": "library_db", "conectado": true,
+                "version": "PostgreSQL 16.14 on x86_64-redhat-linux-gnu"}}
 ```
 
-`GET /health` comprobando PostgreSQL de verdad (no un "OK" fijo):
+El mismo endpoint sin `?format` devuelve XML:
 
 ```xml
 <health>
@@ -77,57 +51,233 @@ Todos responden **XML por defecto** y JSON con `?format=json`.
 </health>
 ```
 
-### Casos de error validados
+Con PostgreSQL detenido responde `503` y `"estado": "degradado"`, no un `200` fijo.
 
-| Caso                                   | Código | Resultado |
-|----------------------------------------|--------|-----------|
-| Correo duplicado                        | 409    | `ERR_EMAIL_DUPLICADO` |
-| Dominio de correo inexistente (sin MX)  | 400    | `ERR_EMAIL_INVALIDO` |
-| Contraseña incorrecta                   | 401    | `ERR_CREDENCIALES_INVALIDAS` |
-| Correo no registrado                    | 401    | Mismo mensaje que contraseña incorrecta |
-| Campos obligatorios faltantes           | 400    | `ERR_CAMPOS_OBLIGATORIOS` |
-| PostgreSQL caído (`/health`)            | 503    | `estado: degradado` |
+### 2. `/register` — valida el dominio y envía el correo
+
+```bash
+curl -s -X POST "http://HOST:5000/register?format=json" \
+  -H 'Content-Type: application/json' \
+  -d '{"nombre":"Demo","apellido_paterno":"Flag",
+       "email":"demo.flag@gmail.com","password":"Password123"}'
+```
+```json
+{
+  "estado": "exito",
+  "mensaje": "Usuario registrado. Revisa tu correo para verificar la cuenta.",
+  "validacion_dominio": "MX encontrado: alt1.gmail-smtp-in.l.google.com",
+  "correo_verificacion": {
+    "enviado": true,
+    "detalle": "mensaje aceptado por el MTA en localhost:25",
+    "destinatario": "demo.flag@gmail.com",
+    "expira_en": "2026-09-19 21:44:32.775237+00:00"
+  },
+  "usuario": {
+    "id": "7e2081cb-23c7-4834-916f-40bf3b53176d",
+    "nombre": "Demo", "apellido_paterno": "Flag", "apellido_materno": null,
+    "email": "demo.flag@gmail.com", "rol": "cliente",
+    "email_verificado": false
+  }
+}
+```
+
+**`email_verificado` es `false`**, aunque el dominio sea válido y el correo se haya enviado. Ese es el punto: el registro no puede afirmar que el buzón fue confirmado.
+
+### 3. El correo existe de verdad — cola de Postfix
+
+```bash
+sudo mailq
+```
+```
+-Queue ID-  --Size-- ----Arrival Time---- -Sender/Recipient-------
+E15B730B3143*    1058 Fri Sep 18 21:44:32  no-reply@libreria.local
+                                         demo.flag@gmail.com
+```
+
+Contenido real del mensaje entregado al MTA (`sudo postcat -q E15B730B3143`):
+
+```
+Subject: Verifica tu correo - Libreria en Linea
+From: no-reply@libreria.local
+To: demo.flag@gmail.com
+Message-Id: <20260918214432.E15B730B3143@integracion.localdomain>
+Date: Fri, 18 Sep 2026 21:44:32 +0000 (UTC)
+
+Hola Demo,
+
+Para completar tu registro necesitamos confirmar que este correo te pertenece.
+
+Tu codigo de verificacion es:
+
+    _9v45jHFd7HbgKPU7f0bfW0lVOdDRP7lMDeWKJFXnpI
+
+Tambien puedes verificarlo directamente en:
+
+    http://136.119.31.253:5000/verify?token=_9v45jHFd7HbgKPU7f0bfW0lVOdDRP7lMDeWKJFXnpI
+
+El codigo vence en 24 horas.
+```
+
+### 4. Estado en la base **antes** de verificar
+
+```sql
+SELECT u.email, u.email_verificado, v.enviado, (v.usado_en IS NOT NULL) AS token_usado
+FROM usuarios u JOIN verificaciones_email v ON v.usuario_id = u.id
+WHERE u.email = 'demo.flag@gmail.com';
+```
+```
+        email        | email_verificado | enviado | token_usado
+---------------------+------------------+---------+-------------
+ demo.flag@gmail.com | f                | t       | f
+```
+
+Correo enviado (`enviado = t`), pero **no verificado** y token **sin usar**.
+
+### 5. `/verify` — el canje del token
+
+```bash
+curl -s "http://HOST:5000/verify?token=_9v45jHFd7HbgKPU7f0bfW0lVOdDRP7lMDeWKJFXnpI&format=json"
+```
+```json
+{"estado": "exito", "mensaje": "Correo verificado correctamente.",
+ "usuario": {"email": "demo.flag@gmail.com", "email_verificado": true,
+             "nombre": "Demo", "apellido_paterno": "Flag", "rol": "cliente"}}
+```
+
+### 6. Estado en la base **después** — el flag cambió
+
+```
+        email        | email_verificado | enviado | token_usado |           usado_en
+---------------------+------------------+---------+-------------+-------------------------------
+ demo.flag@gmail.com | t                | t       | t           | 2026-09-18 21:45:31.877519+00
+```
+
+### 7. Casos de error del token
+
+```bash
+# Reusar el mismo token
+curl -s "http://HOST:5000/verify?token=<usado>&format=json"     # HTTP 409
+{"estado":"error","codigo_error":"ERR_TOKEN_YA_USADO",
+ "mensaje":"Este token ya fue utilizado. El correo ya estaba verificado."}
+
+# Token inventado
+curl -s "http://HOST:5000/verify?token=token-falso-123&format=json"  # HTTP 400
+{"estado":"error","codigo_error":"ERR_TOKEN_INVALIDO",
+ "mensaje":"El token de verificacion no es valido."}
+```
+
+### 8. Ciclo de sesión
+
+```bash
+# Login (guarda la cookie de sesión)
+curl -s -c cookies.txt -X POST "http://HOST:5000/login?format=json" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"ana.torres@correo.test","password":"Password123"}'
+```
+```json
+{"estado":"exito","mensaje":"Bienvenido, Ana.",
+ "usuario":{"nombre":"Ana","apellido_paterno":"Torres","rol":"cliente"}}
+```
+```bash
+curl -s -b cookies.txt "http://HOST:5000/session?format=json"
+# {"autenticado": true, "usuario": {...}}
+
+curl -s -b cookies.txt -c cookies.txt -X POST "http://HOST:5000/logout?format=json"
+# {"estado":"exito","mensaje":"Sesion cerrada.","sesion_previa":true}
+
+curl -s -b cookies.txt "http://HOST:5000/session?format=json"
+# {"autenticado": false, "mensaje": "No hay una sesion activa."}
+```
+
+### 9. Errores de autenticación
+
+| Caso | HTTP | `codigo_error` |
+|---|---|---|
+| Correo duplicado | 409 | `ERR_EMAIL_DUPLICADO` |
+| Dominio sin registro MX | 400 | `ERR_EMAIL_INVALIDO` |
+| Contraseña incorrecta | 401 | `ERR_CREDENCIALES_INVALIDAS` |
+| Correo no registrado | 401 | `ERR_CREDENCIALES_INVALIDAS` *(mismo mensaje)* |
+| Campos faltantes | 400 | `ERR_CAMPOS_OBLIGATORIOS` |
+| Contraseña < 8 caracteres | 400 | `ERR_PASSWORD_DEBIL` |
+
+### 10. El cuerpo de la petición acepta tres formatos
+
+```bash
+# JSON
+curl -X POST "http://HOST:5000/login?format=json" -H 'Content-Type: application/json' \
+     -d '{"email":"ana.torres@correo.test","password":"Password123"}'
+
+# Formulario
+curl -X POST "http://HOST:5000/login?format=json" \
+     -d 'email=luis.hernandez@correo.test&password=Password123'
+
+# XML
+curl -X POST "http://HOST:5000/login?format=json" -H 'Content-Type: application/xml' \
+     -d '<login><email>maria.lopez@correo.test</email><password>Password123</password></login>'
+```
+
+Los tres devuelven `{"estado": "exito", ...}`.
 
 ---
 
 ## Reflexión
 
-### Por qué el microservicio usa la base existente en vez de una propia
+### Qué significa realmente "validar que el correo existe"
 
-La tentación al construir un microservicio "independiente" es darle también su propia base de datos, que es lo que recomienda el patrón *database per service*. Aquí habría sido un error: la plataforma ya tenía 31 usuarios reales en `library_db.usuarios`, gestionados por el monolito Node.js. Crear un catálogo de usuarios paralelo habría producido dos verdades sobre la misma persona — alguien registrado en el monolito no existiría para el microservicio, y viceversa.
+Esta fue la parte del ejercicio donde la primera solución estaba mal, y vale la pena explicar por qué. "Validar el correo" suena a una sola cosa, pero en realidad son tres preguntas distintas, cada una con un método y un nivel de certeza diferente:
 
-"Independiente" aquí significa *desplegable y ejecutable por separado* (su propio proceso, puerto, rol de base de datos y ciclo de vida), no *aislado de los datos del negocio*. El microservicio corre en el puerto 5000 con su propio `systemd` y su propio rol de PostgreSQL, pero lee y escribe la misma tabla que el monolito.
+**1. ¿Está bien escrito?** Se responde con una expresión regular. Es instantáneo y gratis, pero solo descarta errores de tecleo. `noexiste@gmail.com` pasa esta prueba sin problema.
 
-### La decisión que más impacto tuvo: el algoritmo de hash
+**2. ¿El dominio puede recibir correo?** Se responde consultando los registros **MX** del dominio por DNS. Si `gmail.com` declara `alt1.gmail-smtp-in.l.google.com`, sabemos que hay servidores de correo detrás. Si un dominio no tiene MX, o no existe, ninguna dirección de ese dominio puede recibir nada — y ahí sí se puede rechazar con certeza. Eso es lo que hace el microservicio al registrar, y es lo que aparece como `"validacion_dominio": "MX encontrado: ..."` en la respuesta JSON.
 
-Al revisar la base antes de escribir código, los 31 usuarios existentes tenían hashes de dos orígenes distintos: `$2b$` del `bcrypt` de Node y `$2a$` del `pgcrypto` de PostgreSQL. Si el microservicio hubiera hasheado con cualquier otra cosa (pbkdf2, argon2, lo que Flask trae por defecto), esos 31 usuarios simplemente no habrían podido iniciar sesión, y los nuevos tampoco habrían podido entrar al monolito.
+**3. ¿El buzón existe y le pertenece a quien se registra?** Ninguna de las dos anteriores lo responde. `noexiste@gmail.com` tiene sintaxis válida y un dominio con MX impecable, y aun así no existe. Y aunque existiera, nada impide que yo me registre con el correo de otra persona.
 
-Usar `bcrypt` de Python — que verifica ambos prefijos — hizo que la integración funcionara en las dos direcciones desde el primer intento. Se verificó explícitamente: usuarios preexistentes como `ana.torres@correo.test` autentican correctamente en el microservicio nuevo.
+La primera versión de este microservicio ponía `email_verificado = TRUE` al terminar el paso 2. Era un error de diseño: la base afirmaba algo que nunca se comprobó. Un flag que dice "verificado" cuando lo único que se validó fue el DNS del dominio es peor que no tener el flag, porque da una falsa sensación de garantía a cualquier otro sistema que lo consulte.
 
-Esta es justo la diferencia entre *escribir un servicio* e *integrar aplicaciones*: el requisito real no estaba en el enunciado, estaba en los datos que ya existían.
+**La única prueba real de propiedad es el ida y vuelta:** generar un token aleatorio, enviarlo por correo a esa dirección, y esperar a que alguien con acceso a ese buzón lo devuelva. Si el token regresa, el buzón existe *y* la persona que se registró tiene acceso a él. Por eso `email_verificado` solo cambia a `true` desde `/verify`, nunca desde `/register`. La migración `08` incluso revierte el flag de los usuarios que habían quedado marcados con la lógica anterior: es preferible decir "no sé" a afirmar algo falso.
 
-### Por qué la migración tenía que ser aditiva
+### Por qué el token se guarda hasheado
 
-El enunciado pide `nombre`, `apellido paterno` y `apellido materno` por separado, pero la tabla guardaba el nombre completo en una sola columna. La migración agrega las columnas nuevas como **NULLABLE** a propósito: el monolito Node inserta únicamente `(nombre, email, password_hash, rol)`, así que declararlas `NOT NULL` habría roto su registro de usuarios de inmediato.
+El token viaja en claro por correo, pero en la base se guarda solo su **SHA-256**. La razón es la misma que con las contraseñas: si alguien consiguiera leer la tabla `verificaciones_email`, con los tokens en claro podría verificar cuentas ajenas antes que sus dueños. Con solo el hash, las solicitudes pendientes son inútiles para un atacante. El token en claro existe únicamente dentro del correo enviado.
 
-La obligatoriedad de esos campos se valida en el microservicio, no en el esquema. Es la regla general al modificar una base compartida: el esquema debe aceptar a todos los clientes existentes, y cada servicio impone sus propias reglas de negocio encima. El `UPDATE` que separó los 31 nombres históricos (`'Ana Torres'` → `'Ana'` + `'Torres'`) se dejó idempotente para poder re-ejecutarlo sin duplicar efectos, y el apellido materno quedó nulo en vez de inventarse: ese dato no existía.
+Cada token además se marca con `usado_en` al canjearse, lo que lo vuelve de un solo uso — por eso reintentar con el mismo token devuelve `409` y no vuelve a "verificar" nada.
 
-Se verificó después de migrar que el `INSERT` exacto del monolito sigue funcionando.
+### Por qué una tabla aparte para los tokens, pero no para las contraseñas
 
-### Por qué XML es el formato por defecto
+Parece contradictorio con la instrucción de no crear tablas de más, pero la diferencia es real. `password_hash` es un **atributo** de la cuenta: hay exactamente uno, siempre, y no tiene sentido fuera del usuario. Sacarlo a otra tabla sería una relación 1:1 obligatoria — normalización de adorno que solo agrega un JOIN a cada login.
 
-Podría parecer arbitrario en 2026, pero es coherente con el resto de la plataforma: el microservicio anterior nació como SOAP, cuyo contrato natural es XML. Que JSON sea *opt-in* mediante `?format=json` mantiene un criterio uniforme en todo el monorepo y obliga a tratar el formato como una decisión de presentación, no de contenido: los handlers construyen un único diccionario y una sola capa decide cómo serializarlo. Agregar un tercer formato mañana no tocaría ni un endpoint.
+Un token de verificación es un **evento** con ciclo de vida propio: se emite, vence, se usa una sola vez, y un mismo usuario puede pedir varios a lo largo del tiempo. Eso es una relación 1:N genuina. Guardarlo como columna en `usuarios` obligaría a sobrescribir el token anterior y perdería el rastro de cuándo se emitió y cuándo se canjeó.
 
-Ese diseño también hizo evidente un detalle fácil de pasar por alto: `str(True)` en Python produce `"True"`, pero `xs:boolean` exige `"true"` en minúsculas. Un consumidor XML estricto habría fallado al parsear. En JSON el problema no existe porque el booleano es un tipo nativo — un mismo dato, dos representaciones, dos conjuntos de reglas.
+La pregunta útil para decidir no es "¿cuántas tablas quedan?", sino "¿esto es un atributo de la entidad o una cosa con vida propia?".
 
-### Por qué CORS no puede ser `*` cuando hay sesión
+### Hasta dónde llega el envío y dónde se topa con la plataforma
 
-En el ejercicio anterior bastó con `Access-Control-Allow-Origin: *` para que la app Electron consumiera el microservicio. Aquí eso no funciona: en cuanto la petición viaja con cookies de sesión, el navegador **rechaza** el comodín y exige un origen explícito más `Access-Control-Allow-Credentials: true`. Por eso este servicio mantiene una lista blanca de orígenes en vez de abrir a todos.
+El microservicio entrega el mensaje a **Postfix** en `localhost:25`, y Postfix lo acepta, le asigna un Queue ID y lo encola — eso es comprobable con `mailq` y `postcat`, y es la prueba de que el envío ocurre de verdad, no es una simulación.
 
-Es una restricción deliberada del estándar: `*` significa "cualquier sitio puede leer esta respuesta", y combinarlo con credenciales permitiría que cualquier página web hiciera peticiones autenticadas en nombre del usuario.
+La entrega hacia afuera es otra historia. Google Cloud **bloquea el puerto 25 saliente** en las VMs de Compute Engine como política anti-spam de la plataforma. En el log se ve exactamente eso:
 
-### Lo que queda pendiente y por qué importa
+```
+postfix/smtp: connect to gmail-smtp-in.l.google.com[108.177.121.26]:25: Connection timed out
+postfix/smtp: connect to gmail-smtp-in.l.google.com[2607:f8b0:4001:c19::1a]:25: Network is unreachable
+```
 
-El servicio corre sobre **HTTP plano**, lo que significa que las contraseñas viajan sin cifrar y la cookie de sesión no puede llevar la bandera `Secure`. Para un ejercicio de clase es aceptable, pero es exactamente el tipo de hallazgo que invalidaría este diseño en producción. Tampoco hay límite de intentos en `/login`, así que no está protegido contra fuerza bruta.
+Postfix resuelve el MX correctamente y hace todo bien; lo que falla es la salida de la red. Para entrega externa real habría que relevar el correo por un proveedor autenticado en el puerto 587 (SendGrid, Mailgun, Gmail SMTP), que es un cambio de configuración de Postfix, no del microservicio: el código ya envía por SMTP y no le importa quién esté del otro lado.
 
-Ambas cosas están documentadas como limitaciones conocidas en vez de quedar calladas: reconocer el límite de lo construido es parte del diseño, no una omisión.
+Vale la pena señalarlo porque es la clase de restricción que no aparece en ningún requerimiento y solo se descubre al desplegar. El diseño correcto fue no acoplar el microservicio a un método de entrega: habla SMTP con un MTA local, y cómo ese MTA entregue es un problema de infraestructura.
+
+### Por qué el registro no falla si el correo no se envía
+
+Si Postfix estuviera caído, el usuario igual queda registrado y la respuesta lo dice explícitamente (`"enviado": false` con el detalle del error). Hacer fallar todo el registro por un problema de correo convertiría al MTA en un punto único de falla para dar de alta usuarios. El token queda guardado y se puede reintentar el envío; lo que no se puede es perder el registro del usuario por algo que no depende de él.
+
+### Sobre los formatos y la sesión
+
+El parámetro `?format=` decide únicamente cómo se **serializa** la respuesta; el contenido es el mismo diccionario. Eso permitió notar un detalle que en JSON no existe: `str(True)` en Python produce `"True"`, pero `xs:boolean` exige `"true"` en minúsculas — un consumidor XML estricto habría fallado al parsear `email_verificado`. En JSON el booleano es un tipo nativo y el problema no aparece. Mismo dato, dos representaciones, dos conjuntos de reglas.
+
+En cuanto a CORS: mientras el microservicio SOAP pudo abrirse con `Access-Control-Allow-Origin: *`, aquí eso es inválido. En cuanto la petición viaja con cookie de sesión, el navegador **rechaza** el comodín y exige un origen explícito más `Access-Control-Allow-Credentials: true`. Es deliberado del estándar: `*` significa "cualquier sitio puede leer esta respuesta", y combinarlo con credenciales permitiría que cualquier página hiciera peticiones autenticadas en nombre del usuario.
+
+### Lo que queda pendiente
+
+- **HTTPS.** Todo corre en HTTP plano: las contraseñas y los tokens viajan sin cifrar, y la cookie de sesión no puede llevar la bandera `Secure`. Para un ejercicio es aceptable; para producción es inadmisible en un endpoint de login.
+- **Relay SMTP autenticado** por el puerto 587, para que los correos salgan de verdad a dominios externos.
+- **Rate limiting** en `/login` y en `/register`, hoy ausente: nada impide intentar contraseñas por fuerza bruta ni generar correos de verificación en masa.
+- **Reenvío de token** (`/resend-verification`) para el caso en que el correo se pierda o el token venza.

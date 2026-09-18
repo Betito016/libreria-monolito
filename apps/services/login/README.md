@@ -10,13 +10,14 @@ Microservicio **independiente** de autenticación y gestión básica de usuarios
 
 ## Endpoints
 
-| Método | Endpoint    | Función                                          |
-|--------|-------------|--------------------------------------------------|
-| POST   | `/register` | Registrar un nuevo usuario                        |
-| POST   | `/login`    | Autenticar al usuario e iniciar sesión            |
-| POST   | `/logout`   | Cerrar la sesión                                  |
-| GET    | `/session`  | Consultar si existe una sesión autenticada        |
-| GET    | `/health`   | Verificar el estado del microservicio y PostgreSQL |
+| Método   | Endpoint    | Función                                          |
+|----------|-------------|--------------------------------------------------|
+| POST     | `/register` | Registrar un nuevo usuario y enviar correo de verificación |
+| POST     | `/login`    | Autenticar al usuario e iniciar sesión            |
+| POST     | `/logout`   | Cerrar la sesión                                  |
+| GET      | `/session`  | Consultar si existe una sesión autenticada        |
+| GET      | `/health`   | Verificar el estado del microservicio y PostgreSQL |
+| GET/POST | `/verify`   | Canjear el token del correo y marcar el correo como verificado |
 
 Extras: `GET /docs` (Swagger UI) y `GET /openapi.json` (especificación OpenAPI 3.0).
 
@@ -94,16 +95,35 @@ El resultado es interoperabilidad real en las dos direcciones: los usuarios que 
 
 Cuando una petición viaja con cookies, el navegador **rechaza** `Access-Control-Allow-Origin: *`. Hay que responder el origen exacto y añadir `Access-Control-Allow-Credentials: true`. Por eso el microservicio mantiene una lista blanca (`CORS_ORIGINS`) en vez de abrir a todo el mundo.
 
-### Validación de correo: sintaxis + registro MX
+### Validación de correo en tres niveles
 
-El enunciado pide validar que el correo sea real y sugiere Postfix. La validación ocurre en dos niveles, sin enviar correo:
+"Validar el correo" son en realidad tres preguntas distintas, con métodos y niveles de certeza diferentes:
 
-1. **Sintaxis** (RFC 5322 simplificado).
-2. **Registro MX del dominio** vía DNS: comprueba que el dominio tenga servidores de correo declarados. Un dominio sin MX no puede recibir correo, así que la dirección no puede existir.
+| Pregunta | Método | Certeza |
+|---|---|---|
+| ¿Está bien escrito? | Expresión regular (RFC 5322 simplificado) | Solo descarta errores de tecleo |
+| ¿El dominio puede recibir correo? | Consulta DNS del registro **MX** | Alta: sin MX, ninguna dirección del dominio existe |
+| ¿El buzón existe y es de quien se registra? | **Token enviado por correo y devuelto a `/verify`** | La única prueba real |
 
-**Por qué no se sondea el buzón por SMTP:** Google Cloud bloquea el puerto 25 saliente en las VMs de Compute Engine por política de plataforma, así que una conexión SMTP directa no sale de la instancia. Además, los proveedores grandes responden *accept-all* o aplican greylisting, de modo que el resultado no sería confiable, y sondear buzones ajenos de forma masiva es un patrón que las listas de reputación marcan como spam.
+Los dos primeros ocurren en `/register` y solo sirven para **rechazar** direcciones imposibles. `noexiste@gmail.com` los pasa ambos sin problema, por eso **`/register` deja `email_verificado = false`**.
 
-La verificación definitiva de **propiedad** del buzón requiere enviar un correo con token de confirmación, lo que implica un relay SMTP autenticado (puerto 587) y un endpoint `/verify` que el enunciado no contempla. Queda como trabajo futuro.
+El flag solo cambia a `true` desde `/verify`, cuando alguien devuelve el token que se envió a ese buzón. El token se guarda **hasheado (SHA-256)** — igual que las contraseñas — y es de un solo uso (`usado_en`), por lo que reintentarlo devuelve `409`.
+
+**Por qué no se sondea el buzón por SMTP (`RCPT TO`):** GCP bloquea el puerto 25 saliente, los proveedores grandes responden *accept-all* o aplican greylisting (resultado no confiable), y sondear buzones ajenos de forma masiva es un patrón que las listas de reputación marcan como spam.
+
+### Envío de correo: hasta dónde llega
+
+El microservicio entrega el mensaje a **Postfix** en `localhost:25`. Postfix lo acepta, le asigna un Queue ID y lo encola — verificable con `mailq` y `postcat -q <id>`.
+
+La entrega **externa** falla porque Google Cloud bloquea el puerto 25 saliente en las VMs de Compute Engine:
+
+```
+postfix/smtp: connect to gmail-smtp-in.l.google.com[108.177.121.26]:25: Connection timed out
+```
+
+Postfix resuelve el MX correctamente; lo que falla es la salida de red. Para entrega externa real hay que configurar un relay autenticado por el puerto 587 (SendGrid, Mailgun, Gmail SMTP) — es un cambio de configuración del MTA, no del microservicio: el código ya habla SMTP y no le importa quién esté del otro lado.
+
+Si el envío falla, **el registro no se cancela**: el usuario queda creado y la respuesta lo indica (`"enviado": false` con el detalle). Hacer fallar el alta por un problema de correo convertiría al MTA en punto único de falla.
 
 ### Seguridad adicional
 

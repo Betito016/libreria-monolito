@@ -193,6 +193,44 @@ def build_openapi_spec(server_url: str) -> dict:
                     },
                 }
             },
+            "/verify": {
+                "get": {
+                    "summary": "Verificar el correo canjeando el token enviado por email",
+                    "description": (
+                        "Unico camino por el que `email_verificado` pasa a `true`. "
+                        "El token viaja por correo (Postfix) y nunca se almacena en "
+                        "claro: la base guarda solo su SHA-256. Acepta GET para que "
+                        "el enlace del correo funcione desde el navegador, y POST "
+                        "para clientes programaticos."
+                    ),
+                    "parameters": [
+                        {
+                            "name": "token",
+                            "in": "query",
+                            "required": True,
+                            "schema": {"type": "string"},
+                            "description": "Token recibido por correo.",
+                        },
+                        FORMAT_PARAM,
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "Correo verificado; email_verificado pasa a true",
+                            "content": _dual_content({
+                                "type": "object",
+                                "properties": {
+                                    "estado": {"type": "string", "example": "exito"},
+                                    "mensaje": {"type": "string"},
+                                    "usuario": USUARIO_SCHEMA,
+                                },
+                            }),
+                        },
+                        "400": {"description": "Token invalido o faltante", "content": _dual_content(ERROR_SCHEMA)},
+                        "409": {"description": "El token ya fue utilizado", "content": _dual_content(ERROR_SCHEMA)},
+                        "410": {"description": "El token expiro", "content": _dual_content(ERROR_SCHEMA)},
+                    },
+                }
+            },
             "/health": {
                 "get": {
                     "summary": "Verificar el estado del microservicio y de PostgreSQL",
