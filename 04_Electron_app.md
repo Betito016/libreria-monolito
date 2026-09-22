@@ -10,13 +10,15 @@ escribe una aplicacion de escritorio para windows 11 con electron que muestre el
 
 ## Nota
 
-La IP `34.51.99.221` del prompt es la de la instancia del profesor (a modo de ejemplo genérico en el enunciado). Nuestra instancia (`integracion`, GCP) usa una IP externa distinta, ya que es efímera y depende del proyecto de cada quien.
+La IP `34.51.99.221` del prompt es la de la instancia del profesor (a modo de ejemplo genérico en el enunciado). Nuestra instancia (`integracion`, GCP) usa una IP externa distinta.
 
 **Endpoint real de nuestro microservicio:**
 
 ```
-http://34.61.137.144:5001/books
+http://34.135.84.31:5001/books
 ```
+
+Esta dirección está **reservada como IP estática** en GCP (`integracion-ip`, región `us-central1`), así que ya no cambia al reiniciar la instancia. Antes era efímera y rotó tres veces, dejando enlaces muertos en la app y en la documentación.
 
 La aplicación Electron debe apuntar por defecto a esta URL/puerto (configurables y persistidos en LocalStorage, tal como pide el prompt), no a la IP de ejemplo del enunciado.
 

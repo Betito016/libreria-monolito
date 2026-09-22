@@ -53,7 +53,7 @@ Se abrirá una ventana de escritorio con el catálogo de libros.
 Por defecto la aplicación apunta a:
 
 ```
-URL base:  http://34.61.137.144:5001
+URL base:  http://34.135.84.31:5001
 Endpoint:  /books
 ```
 

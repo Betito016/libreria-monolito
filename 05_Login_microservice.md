@@ -281,3 +281,5 @@ En cuanto a CORS: mientras el microservicio SOAP pudo abrirse con `Access-Contro
 - **Relay SMTP autenticado** por el puerto 587, para que los correos salgan de verdad a dominios externos.
 - **Rate limiting** en `/login` y en `/register`, hoy ausente: nada impide intentar contraseñas por fuerza bruta ni generar correos de verificación en masa.
 - **Reenvío de token** (`/resend-verification`) para el caso en que el correo se pierda o el token venza.
+
+> **Nota sobre la dirección del servicio.** Los ejemplos de evidencia de arriba se capturaron cuando la instancia usaba una IP efímera, que rotó tres veces y dejó enlaces de verificación apuntando a direcciones muertas. La instancia ahora tiene una **IP estática reservada** (`integracion-ip`, `34.135.84.31`), así que `PUBLIC_BASE_URL` ya no se invalida al reiniciar. Las capturas se conservan tal como se obtuvieron, con la IP que estaba vigente en ese momento.
