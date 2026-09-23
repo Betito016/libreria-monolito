@@ -59,6 +59,31 @@ LOGIN_BODY_SCHEMA = {
 }
 
 
+SESION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "expira_en": {"type": "string", "format": "date-time"},
+        "segundos_restantes": {"type": "integer", "example": 1740},
+        "duracion_minutos": {"type": "integer", "example": 30},
+    },
+}
+
+PERFIL_BODY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "nombre": {"type": "string", "example": "Humberto"},
+        "apellido_paterno": {"type": "string", "example": "Vargas"},
+        "apellido_materno": {"type": "string", "example": "Salinas"},
+        "email": {"type": "string", "format": "email"},
+        "password": {"type": "string", "format": "password", "minLength": 8},
+        "password_actual": {
+            "type": "string", "format": "password",
+            "description": "Obligatorio solo si se cambia email o password.",
+        },
+    },
+}
+
+
 def _dual_content(schema: dict) -> dict:
     """Un mismo recurso, dos representaciones."""
     return {
@@ -151,7 +176,13 @@ def build_openapi_spec(server_url: str) -> dict:
                             }),
                         },
                         "401": {"description": "Credenciales invalidas", "content": _dual_content(ERROR_SCHEMA)},
-                        "403": {"description": "Cuenta desactivada", "content": _dual_content(ERROR_SCHEMA)},
+                        "403": {
+                            "description": (
+                                "La cuenta no puede autenticarse todavia: "
+                                "ERR_CORREO_NO_VERIFICADO o ERR_CUENTA_INACTIVA"
+                            ),
+                            "content": _dual_content(ERROR_SCHEMA),
+                        },
                     },
                 }
             },
@@ -176,8 +207,13 @@ def build_openapi_spec(server_url: str) -> dict:
             },
             "/session": {
                 "get": {
-                    "summary": "Consultar si existe una sesion autenticada",
-                    "description": "Requiere que el cliente envie la cookie de sesion emitida por /login.",
+                    "summary": "Consultar la sesion y el perfil del usuario",
+                    "description": (
+                        "Endpoint de introspeccion: siempre responde 200. Si no hay sesion "
+                        "valida indica `autenticado: false` y el `motivo` "
+                        "(`sin_sesion`, `expirada`, `usuario_invalido`). La sesion tiene un "
+                        "vencimiento absoluto que solo se prorroga con POST /session/extend."
+                    ),
                     "parameters": [FORMAT_PARAM],
                     "responses": {
                         "200": {
@@ -186,10 +222,75 @@ def build_openapi_spec(server_url: str) -> dict:
                                 "type": "object",
                                 "properties": {
                                     "autenticado": {"type": "boolean"},
+                                    "motivo": {"type": "string", "example": "expirada"},
                                     "usuario": USUARIO_SCHEMA,
+                                    "sesion": SESION_SCHEMA,
                                 },
                             }),
                         }
+                    },
+                }
+            },
+            "/session/extend": {
+                "post": {
+                    "summary": "Prorrogar la sesion vigente",
+                    "description": "Reinicia el vencimiento de la sesion. No revive una sesion ya expirada.",
+                    "parameters": [FORMAT_PARAM],
+                    "responses": {
+                        "200": {
+                            "description": "Sesion extendida",
+                            "content": _dual_content({
+                                "type": "object",
+                                "properties": {
+                                    "estado": {"type": "string", "example": "exito"},
+                                    "sesion": SESION_SCHEMA,
+                                },
+                            }),
+                        },
+                        "401": {
+                            "description": "ERR_SESION_EXPIRADA o ERR_SESION_INVALIDA",
+                            "content": _dual_content(ERROR_SCHEMA),
+                        },
+                    },
+                }
+            },
+            "/profile": {
+                "patch": {
+                    "summary": "Modificar el perfil del usuario (actualizacion parcial)",
+                    "description": (
+                        "Solo se modifican los campos enviados. Cambiar `email` o `password` "
+                        "exige `password_actual`. Cambiar el correo lo marca como no "
+                        "verificado y envia un nuevo token. `rol`, `activo` e `id` no se "
+                        "aceptan: se rechazan con ERR_CAMPOS_NO_PERMITIDOS."
+                    ),
+                    "parameters": [FORMAT_PARAM],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {"schema": PERFIL_BODY_SCHEMA},
+                            "application/x-www-form-urlencoded": {"schema": PERFIL_BODY_SCHEMA},
+                            "application/xml": {"schema": PERFIL_BODY_SCHEMA},
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Perfil actualizado",
+                            "content": _dual_content({
+                                "type": "object",
+                                "properties": {
+                                    "estado": {"type": "string", "example": "exito"},
+                                    "campos_actualizados": {
+                                        "type": "array", "items": {"type": "string"},
+                                        "example": ["nombre"],
+                                    },
+                                    "usuario": USUARIO_SCHEMA,
+                                },
+                            }),
+                        },
+                        "400": {"description": "Datos invalidos o campos no permitidos", "content": _dual_content(ERROR_SCHEMA)},
+                        "401": {"description": "Sin sesion o sesion expirada", "content": _dual_content(ERROR_SCHEMA)},
+                        "403": {"description": "Contrasena actual incorrecta", "content": _dual_content(ERROR_SCHEMA)},
+                        "409": {"description": "El nuevo correo ya esta registrado", "content": _dual_content(ERROR_SCHEMA)},
                     },
                 }
             },

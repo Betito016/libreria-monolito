@@ -12,6 +12,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import psycopg
+from psycopg import sql as psql
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -101,7 +102,7 @@ class UserRepository:
                     return cur.fetchone()
         except psycopg.errors.UniqueViolation as exc:
             raise EmailAlreadyRegisteredError(
-                f"El correo '{email}' ya esta registrado."
+                f"El correo '{email}' ya está registrado."
             ) from exc
         except psycopg.OperationalError as exc:
             raise DatabaseUnavailableError(str(exc)) from exc
@@ -238,5 +239,61 @@ class UserRepository:
                         (user_id,),
                     )
                     return cur.fetchone()
+        except psycopg.OperationalError as exc:
+            raise DatabaseUnavailableError(str(exc)) from exc
+
+    # ------------------------------------------------------------------
+    # PATCH /profile
+    # ------------------------------------------------------------------
+    # Unicas columnas que el perfil puede modificar. El rol, `activo` y el
+    # id nunca se aceptan desde el cliente: un usuario no puede ascenderse
+    # a administrador editando su propio perfil.
+    COLUMNAS_PERFIL = (
+        'nombre', 'apellido_paterno', 'apellido_materno',
+        'email', 'password_hash', 'email_verificado',
+    )
+
+    @classmethod
+    def get_password_hash(cls, user_id: str) -> Optional[str]:
+        try:
+            with cls.pool().connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT password_hash FROM usuarios WHERE id = %s", (user_id,))
+                    fila = cur.fetchone()
+                    return fila[0] if fila else None
+        except psycopg.OperationalError as exc:
+            raise DatabaseUnavailableError(str(exc)) from exc
+
+    @classmethod
+    def update_profile(cls, user_id: str, cambios: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Actualizacion parcial: solo modifica las columnas presentes en
+        `cambios`. Los nombres de columna salen de COLUMNAS_PERFIL (nunca del
+        cliente) y se componen con psycopg.sql para evitar inyeccion."""
+        columnas = [c for c in cambios if c in cls.COLUMNAS_PERFIL]
+        if not columnas:
+            return cls.find_by_id(user_id)
+
+        asignaciones = psql.SQL(', ').join(
+            psql.SQL('{} = %s').format(psql.Identifier(c)) for c in columnas
+        )
+        consulta = psql.SQL(
+            """
+            UPDATE usuarios SET {asignaciones}, actualizado_en = now()
+            WHERE id = %s
+            RETURNING id, nombre, apellido_paterno, apellido_materno, email,
+                      rol, activo, email_verificado, fecha_registro
+            """
+        ).format(asignaciones=asignaciones)
+        parametros = [cambios[c] for c in columnas] + [user_id]
+
+        try:
+            with cls.pool().connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(consulta, parametros)
+                    return cur.fetchone()
+        except psycopg.errors.UniqueViolation as exc:
+            raise EmailAlreadyRegisteredError(
+                f"El correo '{cambios.get('email')}' ya está registrado."
+            ) from exc
         except psycopg.OperationalError as exc:
             raise DatabaseUnavailableError(str(exc)) from exc

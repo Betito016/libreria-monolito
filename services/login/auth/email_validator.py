@@ -45,7 +45,7 @@ def validate_syntax(email: str) -> Optional[str]:
     if len(email) > EMAIL_MAX_LENGTH:
         return f"El correo no puede exceder {EMAIL_MAX_LENGTH} caracteres."
     if not EMAIL_REGEX.match(email):
-        return "El formato del correo no es valido."
+        return "El formato del correo no es válido."
     return None
 
 
@@ -63,7 +63,7 @@ def domain_has_mx(email: str) -> Tuple[bool, str]:
         import dns.resolver
     except ImportError:
         logger.warning("dnspython no instalado: se omite la verificacion MX.")
-        return True, "verificacion MX omitida (dnspython no disponible)"
+        return True, "verificación MX omitida (dnspython no disponible)"
 
     try:
         answers = dns.resolver.resolve(domain, 'MX', lifetime=5)
@@ -77,7 +77,7 @@ def domain_has_mx(email: str) -> Tuple[bool, str]:
         return False, f"El dominio '{domain}' no tiene registros MX."
     except Exception as exc:
         logger.warning(f"No se pudo consultar MX de '{domain}': {exc}")
-        return True, f"verificacion MX no concluyente ({exc.__class__.__name__})"
+        return True, f"verificación MX no concluyente ({exc.__class__.__name__})"
 
 
 def validate_email(email: str, check_mx: bool = True) -> Tuple[bool, str]:
@@ -87,7 +87,7 @@ def validate_email(email: str, check_mx: bool = True) -> Tuple[bool, str]:
         return False, syntax_error
 
     if not check_mx:
-        return True, "sintaxis valida (verificacion MX deshabilitada)"
+        return True, "sintaxis válida (verificación MX deshabilitada)"
 
     has_mx, detail = domain_has_mx(email)
     if not has_mx:

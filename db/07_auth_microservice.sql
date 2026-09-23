@@ -1,6 +1,6 @@
 -- =====================================================================
 -- library/db/07_auth_microservice.sql
--- Migracion: microservicio independiente de autenticacion (apps/services/login)
+-- Migracion: microservicio independiente de autenticacion (services/login)
 -- Motor: PostgreSQL  |  Base: library_db
 -- =====================================================================
 --

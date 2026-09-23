@@ -1,6 +1,6 @@
 -- =====================================================================
 -- library/db/08_email_verification.sql
--- Migracion: verificacion real de correo por token (apps/services/login)
+-- Migracion: verificacion real de correo por token (services/login)
 -- Motor: PostgreSQL  |  Base: library_db
 -- =====================================================================
 --

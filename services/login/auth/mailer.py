@@ -56,15 +56,15 @@ def _construir_mensaje(destinatario: str, nombre: str, token: str) -> EmailMessa
 
 Para completar tu registro necesitamos confirmar que este correo te pertenece.
 
-Tu codigo de verificacion es:
+Tu código de verificación es:
 
     {token}
 
-Tambien puedes verificarlo directamente en:
+También puedes verificarlo directamente en:
 
     {enlace}
 
-El codigo vence en {Config.TOKEN_TTL_HOURS} horas. Si tu no te registraste,
+El código vence en {Config.TOKEN_TTL_HOURS} horas. Si tú no te registraste,
 puedes ignorar este mensaje.
 
 --
@@ -82,9 +82,12 @@ def enviar_verificacion(destinatario: str, nombre: str, token: str) -> Tuple[boo
     quede registrado. El registro se completa y el detalle queda en la
     respuesta y en los logs para poder reintentar.
     """
+    if Config.MAIL_DEV_LOG_TOKEN:
+        logger.warning(f"[DEV] Token de verificacion para {destinatario}: {token}")
+
     if not Config.MAIL_ENABLED:
         logger.info("Envio de correo deshabilitado (MAIL_ENABLED=False).")
-        return False, "envio deshabilitado por configuracion"
+        return False, "envío deshabilitado por configuración"
 
     mensaje = _construir_mensaje(destinatario, nombre, token)
 

@@ -14,6 +14,9 @@ from flask import Response, jsonify, request
 # Plurales cuyo singular no se obtiene quitando la 's' final.
 _PLURAL_TO_SINGULAR = {
     'errores': 'error',
+    'campos_actualizados': 'campo',
+    'campos_faltantes': 'campo',
+    'campos_rechazados': 'campo',
 }
 
 

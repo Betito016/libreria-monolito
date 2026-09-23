@@ -21,8 +21,14 @@ class Config:
     # sesiones activas quedan invalidadas.
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-only-change-me')
 
-    # Duracion de la sesion autenticada
-    SESSION_LIFETIME_MINUTES = int(os.getenv('SESSION_LIFETIME_MINUTES', '60'))
+    # Duracion de la sesion autenticada. Es un vencimiento ABSOLUTO: solo se
+    # prorroga explicitamente con POST /session/extend, no con cada peticion.
+    SESSION_LIFETIME_MINUTES = int(os.getenv('SESSION_LIFETIME_MINUTES', '30'))
+
+    # Nombre propio para la cookie de sesion. Las cookies no distinguen
+    # puerto: si otro servicio Flask en el mismo host usara el nombre por
+    # defecto ('session'), ambas cookies se sobrescribirian entre si.
+    SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', 'libreria_login_session')
 
     # PostgreSQL (misma base que el monolito: library_db)
     DB_HOST = os.getenv('DB_HOST', 'localhost')
@@ -55,6 +61,13 @@ class Config:
 
     # Vigencia del token de verificacion
     TOKEN_TTL_HOURS = int(os.getenv('TOKEN_TTL_HOURS', '24'))
+
+    # SOLO DESARROLLO LOCAL: escribe el token de verificacion en el log del
+    # servidor. Windows no tiene Postfix, asi que en el escenario local el
+    # correo no puede enviarse y sin esto no habria forma de verificar una
+    # cuenta nueva. Nunca debe activarse en la instancia remota. El token
+    # jamas viaja en la respuesta HTTP: solo lo ve quien opera el servidor.
+    MAIL_DEV_LOG_TOKEN = os.getenv('MAIL_DEV_LOG_TOKEN', 'False').lower() in ('true', '1', 't')
 
     @classmethod
     def dsn(cls) -> str:

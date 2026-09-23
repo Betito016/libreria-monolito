@@ -44,7 +44,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 def validate_password_strength(password: str) -> Optional[str]:
     """Devuelve un mensaje de error, o None si la contrasena es aceptable."""
     if not password:
-        return "La contrasena es obligatoria."
+        return "La contraseña es obligatoria."
     if len(password) < PASSWORD_MIN_LENGTH:
-        return f"La contrasena debe tener al menos {PASSWORD_MIN_LENGTH} caracteres."
+        return f"La contraseña debe tener al menos {PASSWORD_MIN_LENGTH} caracteres."
     return None

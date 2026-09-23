@@ -2,7 +2,7 @@
 
 Microservicio independiente de autenticación y gestión básica de usuarios: **Python + Flask + Psycopg 3 + PostgreSQL**, sobre la base existente del proyecto (`library_db`), con respuestas en **XML y JSON**.
 
-Código: [`apps/services/login/`](apps/services/login/)
+Código: [`services/login/`](services/login/)
 Migraciones: [`db/07_auth_microservice.sql`](db/07_auth_microservice.sql) · [`db/08_email_verification.sql`](db/08_email_verification.sql)
 
 ---

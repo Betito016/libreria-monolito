@@ -15,9 +15,19 @@ Microservicio **independiente** de autenticación y gestión básica de usuarios
 | POST     | `/register` | Registrar un nuevo usuario y enviar correo de verificación |
 | POST     | `/login`    | Autenticar al usuario e iniciar sesión            |
 | POST     | `/logout`   | Cerrar la sesión                                  |
-| GET      | `/session`  | Consultar si existe una sesión autenticada        |
+| GET      | `/session`  | Consultar la sesión, el perfil y cuánto le queda  |
+| POST     | `/session/extend` | Prorrogar la sesión vigente                 |
+| PATCH    | `/profile`  | Modificar nombre, apellidos, correo o contraseña  |
 | GET      | `/health`   | Verificar el estado del microservicio y PostgreSQL |
 | GET/POST | `/verify`   | Canjear el token del correo y marcar el correo como verificado |
+
+**Cuentas que no pueden autenticarse:** `/login` responde **403** `ERR_CORREO_NO_VERIFICADO` si el correo no se ha verificado, y `ERR_CUENTA_INACTIVA` si la cuenta está desactivada. Ambos se informan solo después de validar la contraseña, para no revelar el estado de cuentas ajenas.
+
+**Vencimiento de la sesión:** es absoluto (30 minutos por defecto, `SESSION_LIFETIME_MINUTES`). Flask renueva la cookie en cada petición por defecto, lo que haría que la sesión no expirara nunca mientras el cliente consulte `/session`; por eso se desactiva `SESSION_REFRESH_EACH_REQUEST` y la sesión solo se prorroga con `POST /session/extend`. `/login`, `/session` y `/session/extend` devuelven `sesion.segundos_restantes` para que el cliente pueda advertir antes de que expire.
+
+**Perfil:** `PATCH /profile` modifica solo los campos enviados. Cambiar correo o contraseña exige `password_actual`; un correo nuevo queda sin verificar y se envía otro token. `rol`, `activo` e `id` se rechazan con 400 `ERR_CAMPOS_NO_PERMITIDOS`: un usuario no puede ascenderse a administrador editando su perfil.
+
+**Cookie de sesión:** se llama `libreria_login_session` y no `session` (el nombre por defecto de Flask). Las cookies no distinguen puerto: si otro servicio Flask en el mismo host usara el nombre por defecto, ambas cookies se sobrescribirían.
 
 Extras: `GET /docs` (Swagger UI) y `GET /openapi.json` (especificación OpenAPI 3.0).
 
@@ -53,7 +63,7 @@ curl -X POST http://HOST:5000/login -H 'Content-Type: application/xml' \
 ## Arquitectura
 
 ```
-apps/services/login/
+services/login/
 ├── app.py                      # Flask: rutas y orquestación de los 5 endpoints
 ├── requirements.txt
 ├── .env.example
