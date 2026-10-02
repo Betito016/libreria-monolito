@@ -108,10 +108,14 @@ def _error(descripcion: str) -> dict:
 
 
 ERRORES_ESCRITURA = {
-    "401": _error("Sin sesion o sesion expirada (ERR_SESION_INVALIDA, ERR_SESION_EXPIRADA)"),
-    "403": _error("La sesion no es de un administrador (ERR_SIN_PERMISOS)"),
-    "503": _error("PostgreSQL o el servicio de login no disponibles"),
+    "401": _error("Sin token, esquema distinto de Bearer, firma invalida o token expirado "
+                  "(ERR_TOKEN_AUSENTE, ERR_TOKEN_INVALIDO, ERR_TOKEN_EXPIRADO)"),
+    "403": _error("Token valido, pero el usuario no es administrador (ERR_SIN_PERMISOS)"),
+    "503": _error("PostgreSQL no disponible"),
 }
+
+# Solo las escrituras la declaran: la lectura del catalogo es publica.
+SEGURIDAD_JWT = [{"bearerAuth": []}]
 
 
 def build_openapi_spec(server_url: str) -> dict:
@@ -119,24 +123,29 @@ def build_openapi_spec(server_url: str) -> dict:
         "openapi": "3.0.3",
         "info": {
             "title": "Microservicio de Libros - Libreria en Linea",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "description": (
                 "Catalogo de libros (Flask + Psycopg 3 + PostgreSQL).\n\n"
                 "**Formato:** XML por defecto; JSON con `?format=json`.\n\n"
-                "**Lectura publica.** Crear, reemplazar, modificar y eliminar requieren la "
-                "cookie de sesion emitida por el microservicio de **login** "
-                "(`libreria_login_session`) perteneciente a un **administrador**.\n\n"
+                "**Lectura publica.** Crear, reemplazar, modificar y eliminar requieren "
+                "`Authorization: Bearer <token>` con un **JWT** emitido por el microservicio "
+                "de **login** (`POST /login` → `token.access_token`) a un **administrador**.\n\n"
+                "Las rutas tambien responden sin el prefijo `/api` (`/books`, `/books/{isbn}`).\n\n"
                 "**PUT vs PATCH:** PUT reemplaza el libro completo y exige todos los campos; "
                 "PATCH modifica solo los campos enviados."
             ),
         },
         "servers": [{"url": server_url}],
+        "components": {"securitySchemes": {"bearerAuth": {
+            "type": "http", "scheme": "bearer", "bearerFormat": "JWT",
+            "description": "access_token devuelto por POST /login del microservicio de login.",
+        }}},
         "paths": {
             "/health": {"get": {
                 "summary": "Estado del servicio, de PostgreSQL y del login",
                 "parameters": [FORMAT_PARAM],
                 "responses": {
-                    "200": {"description": "ok, o degradado solo en escritura (login caido)",
+                    "200": {"description": "ok, o degradado si el login no responde (no se emiten tokens nuevos)",
                             "content": _dual({"type": "object"})},
                     "503": {"description": "degradado: PostgreSQL no disponible",
                             "content": _dual({"type": "object"})},
@@ -147,7 +156,7 @@ def build_openapi_spec(server_url: str) -> dict:
                 "parameters": [FORMAT_PARAM],
                 "responses": {"200": {"description": "Lista de categorias", "content": _dual({"type": "object"})}},
             }},
-            "/books": {
+            "/api/books": {
                 "get": {
                     "summary": "Catalogo paginado con filtros",
                     "parameters": [
@@ -176,7 +185,8 @@ def build_openapi_spec(server_url: str) -> dict:
                     },
                 },
                 "post": {
-                    "summary": "Crear un libro (administrador)",
+                    "summary": "Crear un libro (JWT de administrador)",
+                    "security": SEGURIDAD_JWT,
                     "parameters": [FORMAT_PARAM],
                     "requestBody": _cuerpo(
                         CUERPO_LIBRO,
@@ -190,7 +200,7 @@ def build_openapi_spec(server_url: str) -> dict:
                     },
                 },
             },
-            "/books/{isbn}": {
+            "/api/books/{isbn}": {
                 "get": {
                     "summary": "Detalle del libro, con sus conceptos",
                     "parameters": [ISBN_PARAM, FORMAT_PARAM],
@@ -201,7 +211,8 @@ def build_openapi_spec(server_url: str) -> dict:
                     },
                 },
                 "put": {
-                    "summary": "Reemplazar el libro completo (administrador)",
+                    "summary": "Reemplazar el libro completo (JWT de administrador)",
+                    "security": SEGURIDAD_JWT,
                     "description": (
                         "Exige TODOS los campos, incluidas las listas autores, generos e "
                         "imagenes. Lo que no se envia no se conserva. El ISBN no cambia."
@@ -220,7 +231,8 @@ def build_openapi_spec(server_url: str) -> dict:
                     },
                 },
                 "patch": {
-                    "summary": "Modificar solo algunos campos (administrador)",
+                    "summary": "Modificar solo algunos campos (JWT de administrador)",
+                    "security": SEGURIDAD_JWT,
                     "description": "Cualquier subconjunto de campos; el resto queda igual.",
                     "parameters": [ISBN_PARAM, FORMAT_PARAM],
                     "requestBody": _cuerpo(CUERPO_LIBRO, []),
@@ -232,7 +244,8 @@ def build_openapi_spec(server_url: str) -> dict:
                     },
                 },
                 "delete": {
-                    "summary": "Eliminar un libro (administrador)",
+                    "summary": "Eliminar un libro (JWT de administrador)",
+                    "security": SEGURIDAD_JWT,
                     "parameters": [ISBN_PARAM, FORMAT_PARAM],
                     "responses": {
                         "200": {"description": "Libro eliminado", "content": _dual({"type": "object"})},
@@ -259,7 +272,7 @@ SWAGGER_UI_HTML = """
     <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
     <script>
         window.onload = function () {
-            SwaggerUIBundle({ url: "/openapi.json", dom_id: "#swagger-ui", withCredentials: true });
+            SwaggerUIBundle({ url: "/openapi.json", dom_id: "#swagger-ui" });
         };
     </script>
 </body>

@@ -4,30 +4,34 @@ Microservicio de gestion de libros.
 Stack: Python + Flask + Psycopg 3 + PostgreSQL (libreria_db).
 Responde en XML por defecto y en JSON con ?format=json.
 
-    GET    /health          Estado del servicio, de PostgreSQL y del login
-    GET    /categories      Categorias validas (publico)
-    GET    /books           Catalogo paginado con filtros (publico)
-    GET    /books/{isbn}    Detalle con conceptos (publico)
-    POST   /books           Crear              (administrador)
-    PUT    /books/{isbn}    Reemplazar completo (administrador)
-    PATCH  /books/{isbn}    Modificar parcial   (administrador)
-    DELETE /books/{isbn}    Eliminar           (administrador)
+    GET    /health              Estado del servicio, de PostgreSQL y del login
+    GET    /categories          Categorias validas (publico)
+    GET    /api/books           Catalogo paginado con filtros (publico)
+    GET    /api/books/{isbn}    Detalle con conceptos (publico)
+    POST   /api/books           Crear               (JWT de administrador)
+    PUT    /api/books/{isbn}    Reemplazar completo (JWT de administrador)
+    PATCH  /api/books/{isbn}    Modificar parcial   (JWT de administrador)
+    DELETE /api/books/{isbn}    Eliminar            (JWT de administrador)
 
-El catalogo es publico: leerlo no requiere sesion. Escribir requiere una
-sesion valida de un administrador, que se comprueba preguntandole al
-microservicio de login.
+Las mismas rutas responden tambien sin el prefijo /api (/books, /books/{isbn})
+para no romper a los clientes anteriores.
+
+El catalogo es publico: leerlo no requiere token. Escribir requiere
+"Authorization: Bearer <token>" con un JWT emitido por el microservicio de
+login a un administrador (ver auth/jwt_auth.py). La proteccion se aplica
+ruta por ruta, no con un middleware global.
 """
 import logging
 import sys
 from datetime import datetime, timezone
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 
 from config.config import Config
 from api.openapi import build_openapi_spec, SWAGGER_UI_HTML
 from api.responses import api_response, error_response, parse_request_body
 from api.validacion import ValidacionError, normalizar_isbn, validar_libro
-from auth.session_client import AuthError, estado_login, requerir_administrador
+from auth.jwt_auth import AuthError, describir_authorization, estado_login, requiere_jwt_administrador
 from db.database import (
     BookInUseError,
     BookNotFoundError,
@@ -44,13 +48,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger("BooksMicroservice")
 
+# HS256 exige una clave de al menos 32 bytes (RFC 7518, 3.2).
+if len(Config.JWT_SECRET.encode()) < 32:
+    logger.critical("JWT_SECRET no esta definida o tiene menos de 32 bytes: no se pueden validar tokens.")
+    raise SystemExit(1)
+
 app = Flask(__name__)
 
 
 @app.after_request
 def _add_cors_headers(response):
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
+    return response
+
+
+# ----------------------------------------------------------------------
+# Logs de cada peticion: metodo, ruta, si es publica o protegida y si trae
+# un Bearer token (sin mostrarlo completo).
+# ----------------------------------------------------------------------
+_SIN_LOG = ('/health', '/docs', '/openapi.json')
+
+
+@app.before_request
+def _log_peticion():
+    if request.method == 'OPTIONS' or request.path in _SIN_LOG:
+        return
+    vista = app.view_functions.get(request.endpoint)
+    protegida = getattr(vista, 'requiere_jwt', False)
+    logger.info(f"--> {request.method} {request.path} | "
+                f"{'PROTEGIDO (requiere JWT)' if protegida else 'publico (sin JWT)'} | "
+                f"{describir_authorization(request.headers.get('Authorization'))}")
+    if protegida and request.content_length:
+        cuerpo = request.get_json(silent=True)
+        if isinstance(cuerpo, dict):
+            logger.info(f"    campos recibidos: {', '.join(sorted(cuerpo))}")
+
+
+@app.after_request
+def _log_respuesta(response):
+    if request.method != 'OPTIONS' and request.path not in _SIN_LOG:
+        logger.info(f"<-- {response.status_code} {request.method} {request.path}")
     return response
 
 
@@ -65,7 +103,11 @@ def _err_validacion(exc: ValidacionError):
 
 @app.errorhandler(AuthError)
 def _err_auth(exc: AuthError):
-    return error_response(exc.codigo, exc.mensaje, status=exc.status)
+    respuesta = error_response(exc.codigo, exc.mensaje, status=exc.status)
+    if exc.status == 401:
+        # RFC 6750: el 401 indica que esquema de autenticacion se espera.
+        respuesta.headers['WWW-Authenticate'] = f'Bearer error="invalid_token", error_description="{exc.codigo}"'
+    return respuesta
 
 
 @app.errorhandler(BookNotFoundError)
@@ -129,25 +171,27 @@ def _isbn_de_ruta(isbn: str) -> str:
 def health():
     """Tres niveles, pensados para el semaforo del cliente:
 
-      ok         PostgreSQL y login disponibles: lectura y escritura.
+      ok         PostgreSQL y login disponibles.
       degradado  (503) PostgreSQL caido: el servicio no puede operar.
-      degradado  (200) Solo login caido: el catalogo se puede consultar,
-                 pero no modificar (no hay forma de validar la sesion).
+      degradado  (200) Solo login caido: los JWT ya emitidos se siguen
+                 validando aqui (lectura y escritura funcionan), pero nadie
+                 puede iniciar sesion para obtener un token nuevo.
     """
     postgres = BookRepository.ping()
     login = estado_login()
 
     lectura = postgres['conectado']
-    escritura = lectura and login['disponible']
 
     return api_response(
         'health',
         {
-            'estado': 'ok' if escritura else 'degradado',
+            'estado': 'ok' if lectura and login['disponible'] else 'degradado',
             'microservicio': 'books',
             'postgresql': postgres,
             'dependencias': {'login': login},
-            'capacidades': {'lectura': lectura, 'escritura': escritura},
+            'autenticacion': {'tipo': 'JWT Bearer', 'algoritmo': Config.JWT_ALGORITHM,
+                              'emision_de_tokens': login['disponible']},
+            'capacidades': {'lectura': lectura, 'escritura': lectura},
             'timestamp': datetime.now(timezone.utc).isoformat(),
         },
         status=200 if lectura else 503,
@@ -183,6 +227,7 @@ def _filtro_numero(nombre: str, tipo):
     return numero
 
 
+@app.route('/api/books', methods=['GET'])
 @app.route('/books', methods=['GET'])
 def listar_libros():
     filtros = {
@@ -222,6 +267,7 @@ def listar_libros():
 # ----------------------------------------------------------------------
 # GET /books/{isbn}
 # ----------------------------------------------------------------------
+@app.route('/api/books/<isbn>', methods=['GET'])
 @app.route('/books/<isbn>', methods=['GET'])
 def detalle_libro(isbn: str):
     isbn = _isbn_de_ruta(isbn)
@@ -234,13 +280,15 @@ def detalle_libro(isbn: str):
 # ----------------------------------------------------------------------
 # POST /books
 # ----------------------------------------------------------------------
+@app.route('/api/books', methods=['POST'])
 @app.route('/books', methods=['POST'])
+@requiere_jwt_administrador
 def crear_libro():
-    admin = requerir_administrador(request.cookies)
+    admin = g.usuario
     datos = validar_libro(_leer_cuerpo(), modo='crear')
 
     libro = BookRepository.create(datos)
-    logger.info(f"POST /books {libro['isbn']} por {admin['email']}")
+    logger.info(f"    Operacion realizada: POST {libro['isbn']} por {admin['email']}")
     return api_response(
         'resultado',
         {
@@ -251,22 +299,24 @@ def crear_libro():
             'libro': libro,
         },
         status=201,
-        headers={'Location': f"/books/{libro['isbn']}"},
+        headers={'Location': f"{request.path.rstrip('/')}/{libro['isbn']}"},
     )
 
 
 # ----------------------------------------------------------------------
 # PUT /books/{isbn}
 # ----------------------------------------------------------------------
+@app.route('/api/books/<isbn>', methods=['PUT'])
 @app.route('/books/<isbn>', methods=['PUT'])
+@requiere_jwt_administrador
 def reemplazar_libro(isbn: str):
-    admin = requerir_administrador(request.cookies)
+    admin = g.usuario
     isbn = _isbn_de_ruta(isbn)
     cuerpo = _leer_cuerpo()
     datos = validar_libro(cuerpo, modo='reemplazar', isbn_ruta=isbn)
 
     libro = BookRepository.replace(isbn, datos)
-    logger.info(f"PUT /books/{isbn} por {admin['email']}")
+    logger.info(f"    Operacion realizada: PUT {isbn} por {admin['email']}")
     return api_response(
         'resultado',
         {
@@ -283,14 +333,16 @@ def reemplazar_libro(isbn: str):
 # ----------------------------------------------------------------------
 # PATCH /books/{isbn}
 # ----------------------------------------------------------------------
+@app.route('/api/books/<isbn>', methods=['PATCH'])
 @app.route('/books/<isbn>', methods=['PATCH'])
+@requiere_jwt_administrador
 def modificar_libro(isbn: str):
-    admin = requerir_administrador(request.cookies)
+    admin = g.usuario
     isbn = _isbn_de_ruta(isbn)
     cambios = validar_libro(_leer_cuerpo(), modo='modificar', isbn_ruta=isbn)
 
     libro = BookRepository.update(isbn, cambios)
-    logger.info(f"PATCH /books/{isbn} ({', '.join(sorted(cambios))}) por {admin['email']}")
+    logger.info(f"    Operacion realizada: PATCH {isbn} ({', '.join(sorted(cambios))}) por {admin['email']}")
     return api_response(
         'resultado',
         {
@@ -307,13 +359,15 @@ def modificar_libro(isbn: str):
 # ----------------------------------------------------------------------
 # DELETE /books/{isbn}
 # ----------------------------------------------------------------------
+@app.route('/api/books/<isbn>', methods=['DELETE'])
 @app.route('/books/<isbn>', methods=['DELETE'])
+@requiere_jwt_administrador
 def eliminar_libro(isbn: str):
-    admin = requerir_administrador(request.cookies)
+    admin = g.usuario
     isbn = _isbn_de_ruta(isbn)
 
     BookRepository.delete(isbn)
-    logger.info(f"DELETE /books/{isbn} por {admin['email']}")
+    logger.info(f"    Operacion realizada: DELETE {isbn} por {admin['email']}")
     return api_response(
         'resultado',
         {
@@ -345,13 +399,13 @@ def index():
         'microservicio',
         {
             'nombre': 'Microservicio de Libros',
-            'version': '1.0.0',
+            'version': '1.1.0',
             'documentacion': '/docs',
             'formato_por_defecto': 'xml',
-            'endpoints': [
-                'GET /health', 'GET /categories', 'GET /books', 'GET /books/{isbn}',
-                'POST /books', 'PUT /books/{isbn}', 'PATCH /books/{isbn}', 'DELETE /books/{isbn}',
-            ],
+            'autenticacion': 'Escrituras: Authorization: Bearer <JWT emitido por login>',
+            'endpoints_publicos': ['GET /health', 'GET /categories', 'GET /api/books', 'GET /api/books/{isbn}'],
+            'endpoints_protegidos': ['POST /api/books', 'PUT /api/books/{isbn}',
+                                     'PATCH /api/books/{isbn}', 'DELETE /api/books/{isbn}'],
         },
     )
 

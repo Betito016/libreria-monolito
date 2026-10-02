@@ -68,6 +68,18 @@ SESION_SCHEMA = {
     },
 }
 
+TOKEN_SCHEMA = {
+    "type": "object",
+    "description": "JWT de acceso. Se envia al servicio de libros como Authorization: Bearer <access_token>.",
+    "properties": {
+        "access_token": {"type": "string", "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."},
+        "token_type": {"type": "string", "example": "Bearer"},
+        "algoritmo": {"type": "string", "example": "HS256"},
+        "expira_en_epoch": {"type": "integer"},
+        "expires_in": {"type": "integer", "example": 1800},
+    },
+}
+
 PERFIL_BODY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -106,9 +118,12 @@ def build_openapi_spec(server_url: str) -> dict:
                 "(`application/x-www-form-urlencoded`) o XML.\n\n"
                 "**Sesiones:** `/login` crea una sesion del lado de Flask mediante una "
                 "cookie firmada; `/session` y `/logout` requieren que el cliente envie "
-                "esa cookie."
+                "esa cookie.\n\n"
+                "**JWT:** `/login` y `/session/extend` devuelven ademas `token.access_token`, "
+                "un JWT firmado (HS256) que el servicio de libros exige en sus escrituras como "
+                "`Authorization: Bearer <token>`. Vence junto con la sesion."
             ),
-            "version": "1.0.0",
+            "version": "2.1.0",
         },
         "servers": [{"url": server_url}],
         "paths": {
@@ -165,13 +180,15 @@ def build_openapi_spec(server_url: str) -> dict:
                     },
                     "responses": {
                         "200": {
-                            "description": "Autenticacion exitosa; se establece la cookie de sesion",
+                            "description": "Autenticacion exitosa: se establece la cookie de sesion y se emite el JWT",
                             "content": _dual_content({
                                 "type": "object",
                                 "properties": {
                                     "estado": {"type": "string", "example": "exito"},
                                     "mensaje": {"type": "string"},
                                     "usuario": USUARIO_SCHEMA,
+                                    "sesion": SESION_SCHEMA,
+                                    "token": TOKEN_SCHEMA,
                                 },
                             }),
                         },
@@ -238,12 +255,13 @@ def build_openapi_spec(server_url: str) -> dict:
                     "parameters": [FORMAT_PARAM],
                     "responses": {
                         "200": {
-                            "description": "Sesion extendida",
+                            "description": "Sesion extendida; se emite un JWT nuevo con el vencimiento prorrogado",
                             "content": _dual_content({
                                 "type": "object",
                                 "properties": {
                                     "estado": {"type": "string", "example": "exito"},
                                     "sesion": SESION_SCHEMA,
+                                    "token": TOKEN_SCHEMA,
                                 },
                             }),
                         },

@@ -25,6 +25,7 @@ from config.config import Config
 from api.responses import api_response, error_response, parse_request_body
 from api.openapi import build_openapi_spec, SWAGGER_UI_HTML
 from auth.email_validator import validate_email
+from auth.jwt_tokens import descripcion_segura, emitir_token
 from auth.mailer import enviar_verificacion, generar_token, hash_token
 from auth.passwords import hash_password, verify_password, validate_password_strength
 from db.database import (
@@ -39,6 +40,11 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger("LoginMicroservice")
+
+# HS256 exige una clave de al menos 32 bytes (RFC 7518, 3.2).
+if len(Config.JWT_SECRET.encode()) < 32:
+    logger.critical("JWT_SECRET no esta definida o tiene menos de 32 bytes: el servicio no puede emitir tokens.")
+    raise SystemExit(1)
 
 app = Flask(__name__)
 app.secret_key = Config.SECRET_KEY
@@ -69,7 +75,24 @@ def _add_cors_headers(response):
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Vary'] = 'Origin'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
+    return response
+
+
+# ----------------------------------------------------------------------
+# Logs de cada peticion (para seguir el flujo en la consola)
+# ----------------------------------------------------------------------
+@app.before_request
+def _log_peticion():
+    if request.method == 'OPTIONS' or request.path in ('/health', '/docs', '/openapi.json'):
+        return
+    logger.info(f"--> {request.method} {request.path} | endpoint publico (login no exige JWT)")
+
+
+@app.after_request
+def _log_respuesta(response):
+    if request.method != 'OPTIONS' and request.path not in ('/health', '/docs', '/openapi.json'):
+        logger.info(f"<-- {response.status_code} {request.method} {request.path}")
     return response
 
 
@@ -332,7 +355,12 @@ def login():
         )
 
     _iniciar_sesion(usuario)
-    logger.info(f"Login exitoso: {usuario['email']}")
+    token = emitir_token(usuario, session['expira_en'])
+    logger.info(f"Login exitoso: {usuario['email']} (rol {usuario['rol']})")
+    logger.info(
+        f"    JWT emitido: {descripcion_segura(token['access_token'])} "
+        f"alg={token['algoritmo']} vence en {token['expires_in']} s"
+    )
     return api_response(
         'login',
         {
@@ -340,6 +368,7 @@ def login():
             'mensaje': f"Bienvenido, {usuario['nombre']}.",
             'usuario': _usuario_publico(usuario),
             'sesion': _info_sesion(),
+            'token': token,
         },
     )
 
@@ -414,10 +443,13 @@ def extender_sesion():
         return error
 
     session['expira_en'] = _ahora() + Config.SESSION_LIFETIME_MINUTES * 60
-    logger.info(f"Sesion extendida: {usuario['email']}")
+    # El JWT anterior vence a la hora original: se emite uno nuevo con el
+    # vencimiento prorrogado, para que token y sesion sigan alineados.
+    token = emitir_token(usuario, session['expira_en'])
+    logger.info(f"Sesion extendida: {usuario['email']}; nuevo JWT {descripcion_segura(token['access_token'])}")
     return api_response(
         'sesion',
-        {'estado': 'exito', 'mensaje': 'Sesión extendida.', 'sesion': _info_sesion()},
+        {'estado': 'exito', 'mensaje': 'Sesión extendida.', 'sesion': _info_sesion(), 'token': token},
     )
 
 

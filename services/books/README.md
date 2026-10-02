@@ -11,27 +11,64 @@ Catálogo de libros de la librería en línea: consulta pública y administraci�
 |---|---|---|---|
 | GET | `/health` | público | Estado del servicio, de PostgreSQL y del login |
 | GET | `/categories` | público | Categorías válidas |
-| GET | `/books` | público | Catálogo paginado; filtros `isbn`, `titulo`, `anio`, `precio_min`, `precio_max` |
-| GET | `/books/{isbn}` | público | Detalle con autores, géneros, imágenes y conceptos |
-| POST | `/books` | administrador | Crear |
-| PUT | `/books/{isbn}` | administrador | Reemplazo completo (exige todos los campos) |
-| PATCH | `/books/{isbn}` | administrador | Modificación parcial (solo los campos enviados) |
-| DELETE | `/books/{isbn}` | administrador | Eliminar |
+| GET | `/api/books` | público | Catálogo paginado; filtros `isbn`, `titulo`, `anio`, `precio_min`, `precio_max` |
+| GET | `/api/books/{isbn}` | público | Detalle con autores, géneros, imágenes y conceptos |
+| POST | `/api/books` | **JWT** de administrador | Crear |
+| PUT | `/api/books/{isbn}` | **JWT** de administrador | Reemplazo completo (exige todos los campos) |
+| PATCH | `/api/books/{isbn}` | **JWT** de administrador | Modificación parcial (solo los campos enviados) |
+| DELETE | `/api/books/{isbn}` | **JWT** de administrador | Eliminar |
 
-Documentación interactiva: `GET /docs` (Swagger UI).
+Las mismas rutas responden sin el prefijo (`/books`, `/books/{isbn}`), con la misma protección, para no romper a los clientes anteriores.
 
-## Autorización delegada al login
+Documentación interactiva: `GET /docs` (Swagger UI, con el botón **Authorize** para pegar el token).
 
-Este servicio **no tiene sesiones propias** ni conoce la clave con la que el login firma sus cookies. En cada escritura toma la cookie `libreria_login_session` que envió el cliente y le pregunta al microservicio de login (`GET /session`) a quién pertenece:
+## Autenticación con JWT
+
+Las escrituras exigen el header:
+
+```
+Authorization: Bearer <access_token>
+```
+
+El token lo emite el microservicio de **login** (`POST /login` → `token.access_token`). Este servicio lo valida **localmente** con la misma clave y el mismo algoritmo (`JWT_SECRET`, `JWT_ALGORITHM`, `JWT_ISSUER` idénticos en ambos `.env`), así que no consulta al login en cada petición.
+
+La protección es **selectiva**: solo las cuatro rutas de escritura llevan el decorador `@requiere_jwt_administrador` (`auth/jwt_auth.py`). No hay middleware global; los GET, `/categories` y `/health` siguen públicos.
 
 | Situación | Respuesta |
 |---|---|
-| Sin cookie, o sesión inválida | 401 `ERR_SESION_INVALIDA` |
-| Sesión expirada | 401 `ERR_SESION_EXPIRADA` |
-| Sesión válida pero rol `cliente` | 403 `ERR_SIN_PERMISOS` |
-| El login no responde | 503 `ERR_LOGIN_NO_DISPONIBLE` |
+| Falta el header `Authorization`, o `Bearer` sin token | 401 `ERR_TOKEN_AUSENTE` |
+| Esquema distinto de `Bearer` (p. ej. `Basic`) | 401 `ERR_TOKEN_INVALIDO` |
+| Firma inválida, token alterado o malformado | 401 `ERR_TOKEN_INVALIDO` |
+| Algoritmo distinto de `JWT_ALGORITHM` (incluido `none`) | 401 `ERR_TOKEN_INVALIDO` |
+| Emisor distinto o faltan claims (`exp`, `iat`, `sub`, `iss`) | 401 `ERR_TOKEN_INVALIDO` |
+| Token expirado | 401 `ERR_TOKEN_EXPIRADO` |
+| Token válido, pero rol `cliente` | 403 `ERR_SIN_PERMISOS` |
 
-Si el login cae, **las lecturas siguen funcionando** (el catálogo es público) y `/health` reporta `degradado` con `capacidades.escritura = false`.
+Las respuestas 401 incluyen `WWW-Authenticate: Bearer …` (RFC 6750).
+
+**Si el login cae:** las lecturas y las escrituras con tokens ya emitidos siguen funcionando, pero nadie puede iniciar sesión para obtener uno nuevo. `/health` responde `degradado` con `autenticacion.emision_de_tokens = false`.
+
+**Límite conocido:** un JWT no se puede revocar. Cerrar sesión hace que el cliente lo olvide, pero una copia seguiría siendo válida hasta su vencimiento (30 minutos, igual que la sesión).
+
+### Logs
+
+Cada petición deja en la consola del servicio si la ruta es pública o protegida y si trae token, **sin mostrarlo completo**:
+
+```
+--> PATCH /api/books/978... | PROTEGIDO (requiere JWT) | Authorization: Bearer [JWT PRESENTE eyJhbGciOi…vMa4 (288 caracteres)]
+    campos recibidos: precio
+    JWT valido: firma OK, alg HS256, sub=... email=admin@libreria.test rol=administrador
+    Operacion realizada: PATCH 978... (precio) por admin@libreria.test
+<-- 200 PATCH /api/books/978...
+```
+
+### Pruebas
+
+```bash
+venv\Scripts\python -m pytest -q
+```
+
+`tests/test_jwt_auth.py` cubre GET públicos, escrituras sin token, con token válido, token malformado, firma alterada, otro algoritmo, `alg=none`, otro emisor, token expirado, rol cliente (403) y que los logs no revelan el token. No necesita PostgreSQL ni el login.
 
 ## Modelo de datos
 
@@ -54,10 +91,10 @@ Un libro se reparte en varias tablas de `libreria_db`:
 |---|---|
 | 200 / 201 | Correcto (201 en POST, con cabecera `Location`) |
 | 400 | Datos inválidos, campos faltantes en PUT, ISBN inmutable, filtro inválido |
-| 401 / 403 | Sin sesión / sin permisos |
+| 401 / 403 | Sin JWT válido / JWT válido sin rol administrador |
 | 404 | Libro inexistente |
 | 409 | ISBN duplicado, o libro con conceptos/clasificaciones que impiden borrarlo |
-| 503 | PostgreSQL o login no disponibles |
+| 503 | PostgreSQL no disponible |
 
 ## Instalación
 
@@ -69,7 +106,7 @@ CREATE ROLE books_app_user WITH LOGIN PASSWORD '<password-generada>';
 psql -d libreria_db -f sql/01_catalogo_libros.sql
 
 # 3. Entorno y ejecución
-cp .env.example .env         # completar DB_PASSWORD y LOGIN_SERVICE_URL
+cp .env.example .env         # completar DB_PASSWORD, JWT_SECRET (la misma de login) y LOGIN_SERVICE_URL
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ./venv/bin/python app.py

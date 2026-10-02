@@ -30,6 +30,14 @@ class Config:
     # defecto ('session'), ambas cookies se sobrescribirian entre si.
     SESSION_COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', 'libreria_login_session')
 
+    # JWT de acceso. Login lo FIRMA; el servicio de libros lo VALIDA con la
+    # misma clave y el mismo algoritmo (JWT_SECRET y JWT_ALGORITHM deben ser
+    # identicos en ambos .env). Sin valor por defecto: sin clave el servicio
+    # no arranca, para no firmar nunca con una clave conocida.
+    JWT_SECRET = os.getenv('JWT_SECRET', '')
+    JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
+    JWT_ISSUER = os.getenv('JWT_ISSUER', 'libreria-login')
+
     # PostgreSQL (misma base que el monolito: library_db)
     DB_HOST = os.getenv('DB_HOST', 'localhost')
     DB_PORT = int(os.getenv('DB_PORT', '5432'))

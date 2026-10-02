@@ -27,6 +27,16 @@ Microservicio **independiente** de autenticación y gestión básica de usuarios
 
 **Perfil:** `PATCH /profile` modifica solo los campos enviados. Cambiar correo o contraseña exige `password_actual`; un correo nuevo queda sin verificar y se envía otro token. `rol`, `activo` e `id` se rechazan con 400 `ERR_CAMPOS_NO_PERMITIDOS`: un usuario no puede ascenderse a administrador editando su perfil.
 
+**JWT:** además de la cookie, `POST /login` y `POST /session/extend` devuelven un bloque `token`:
+
+```json
+"token": {"access_token": "eyJhbGciOi...", "token_type": "Bearer", "algoritmo": "HS256", "expires_in": 1800}
+```
+
+El microservicio de libros exige ese token en sus escrituras como `Authorization: Bearer <access_token>`. Lo firma **solo** este servicio (`auth/jwt_tokens.py`), con `JWT_SECRET` y `JWT_ALGORITHM` (HS256). Libros lo valida con la misma clave, así que ambos `.env` deben tener el mismo valor. El token lleva `sub`, `email`, `rol`, `iss`, `iat` y `exp`, y vence al mismo tiempo que la sesión. Sin `JWT_SECRET` (mínimo 32 bytes) el servicio no arranca. En los logs el token aparece solo como `[JWT PRESENTE eyJhbGciOi…abcd (N caracteres)]`.
+
+**Qué es público:** `/login`, `/register`, `/verify`, `/health` y `/logout` no exigen autenticación: sirven justamente para obtenerla, recuperarla o cerrarla. `/session` es una consulta que siempre responde 200. `/session/extend` y `/profile` siguen protegidos con la cookie de sesión.
+
 **Cookie de sesión:** se llama `libreria_login_session` y no `session` (el nombre por defecto de Flask). Las cookies no distinguen puerto: si otro servicio Flask en el mismo host usara el nombre por defecto, ambas cookies se sobrescribirían.
 
 Extras: `GET /docs` (Swagger UI) y `GET /openapi.json` (especificación OpenAPI 3.0).
@@ -72,6 +82,7 @@ services/login/
 ├── db/
 │   └── database.py             # Persistencia con Psycopg 3 + pool de conexiones
 ├── auth/
+│   ├── jwt_tokens.py           # Emisión del JWT de acceso
 │   ├── passwords.py            # Hash y verificación bcrypt
 │   └── email_validator.py      # Validación de correo (sintaxis + MX)
 └── api/
@@ -173,7 +184,7 @@ Agrega `apellido_paterno`, `apellido_materno` y `email_verificado` a `usuarios`,
 ### 3. Configurar y ejecutar
 
 ```bash
-cp .env.example .env     # y rellenar SECRET_KEY y DB_PASSWORD
+cp .env.example .env     # y rellenar SECRET_KEY, JWT_SECRET y DB_PASSWORD
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ./venv/bin/python app.py
