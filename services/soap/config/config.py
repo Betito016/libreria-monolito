@@ -21,7 +21,7 @@ class Config:
     DB_PORT = int(os.getenv('DB_PORT', '5432'))
     DB_NAME = os.getenv('DB_NAME', 'libreria_db')
     DB_USER = os.getenv('DB_USER', 'soap_app_user')
-    DB_PASSWORD = os.getenv('DB_PASSWORD', 'soap_secure_pass_2026')
+    DB_PASSWORD = os.getenv('DB_PASSWORD', '')   # solo desde .env: sin contrasena en el codigo
 
     # Base de Datos de Respaldo Local (SQLite para testing sin servidor PG activo)
     SQLITE_DB_PATH = BASE_DIR / 'db' / 'local_library.db'

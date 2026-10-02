@@ -105,7 +105,7 @@ FROM clasificaciones_cloud;
 -- DO $$
 -- BEGIN
 --   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'soap_app_user') THEN
---     CREATE ROLE soap_app_user WITH LOGIN PASSWORD 'soap_secure_pass_2026';
+--     CREATE ROLE soap_app_user WITH LOGIN PASSWORD '<password-generada>';
 --   END IF;
 -- END
 -- $$;
