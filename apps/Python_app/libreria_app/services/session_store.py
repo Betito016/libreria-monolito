@@ -2,8 +2,10 @@
 Persistencia local de la sesion, para no pedir credenciales en cada arranque.
 
 QUE SE GUARDA
-    La cookie de sesion que emitio el microservicio de login, y el nombre y
-    rol del usuario (solo para mostrarlos mientras se valida la sesion).
+    La cookie de sesion que emitio el microservicio de login, el JWT de
+    acceso (para que las escrituras sigan funcionando al reabrir la app) y
+    el nombre y rol del usuario (solo para mostrarlos mientras se valida).
+    Cookie y JWT vencen juntos: a los 30 minutos, o al extender la sesion.
 
 QUE NO SE GUARDA
     La contrasena. Nunca. Recordar al usuario es recordar la cookie, no sus
@@ -20,8 +22,8 @@ DONDE
     del repositorio). Las sesiones se guardan por servidor de login: una
     cookie de localhost no tiene sentido contra la instancia remota.
 
-La cookie es una credencial mientras la sesion este vigente: quien copie
-este archivo podria actuar como el usuario hasta que expire.
+La cookie y el JWT son credenciales mientras esten vigentes: quien copie
+este archivo podria actuar como el usuario hasta que expiren.
 """
 import json
 from datetime import datetime
@@ -46,9 +48,11 @@ class SessionStore:
         RUTA_SESION.parent.mkdir(parents=True, exist_ok=True)
         RUTA_SESION.write_text(json.dumps(datos, indent=2, ensure_ascii=False), encoding='utf-8')
 
-    def guardar(self, login_url: str, cookies: RequestsCookieJar, usuario: Dict[str, Any]) -> None:
+    def guardar(self, login_url: str, cookies: RequestsCookieJar, usuario: Dict[str, Any],
+                token: Optional[str] = None) -> None:
         datos = self._leer()
         datos[login_url] = {
+            'jwt': token,
             'cookies': [
                 {
                     'name': c.name, 'value': c.value, 'domain': c.domain,
@@ -73,6 +77,10 @@ class SessionStore:
                 expires=c['expires'], secure=c['secure'],
             )
         return entrada.get('usuario')
+
+    def token(self, login_url: str) -> Optional[str]:
+        """JWT guardado para ese servidor, o None."""
+        return (self._leer().get(login_url) or {}).get('jwt')
 
     def borrar(self, login_url: str) -> None:
         datos = self._leer()

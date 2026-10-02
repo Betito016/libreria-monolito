@@ -74,7 +74,7 @@ class ConfigView(ttk.Frame):
         ubicacion = ttk.LabelFrame(self, text='Dónde se conserva la información local', padding=14)
         ubicacion.pack(fill='x', pady=(12, 0))
         tk.Label(ubicacion, text=f"Configuración:  {RUTA_CONFIG}", bg=SUP, anchor='w').pack(fill='x')
-        tk.Label(ubicacion, text=f"Sesión (cookie, nunca la contraseña):  {SessionStore.ruta()}",
+        tk.Label(ubicacion, text=f"Sesión (cookie y JWT, nunca la contraseña):  {SessionStore.ruta()}",
                  bg=SUP, anchor='w').pack(fill='x')
 
         self._llenar(app.config_app)

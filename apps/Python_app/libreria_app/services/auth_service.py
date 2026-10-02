@@ -11,12 +11,20 @@ de login.
     Validar sesion / ver perfil   GET   /session
     Extender la sesion            POST  /session/extend
     Modificar el perfil           PATCH /profile
+
+JWT: POST /login (y POST /session/extend) devuelven `token.access_token`.
+Este servicio lo entrega a `ApiClient.token`, que lo agrega como
+"Authorization: Bearer <token>" en las escrituras al servicio de libros.
+Al cerrar sesion se olvida.
 """
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
-from libreria_app.api.http_client import ApiClient, ApiResult
+from libreria_app.api.http_client import ApiClient, ApiResult, descripcion_token
+
+logger = logging.getLogger('libreria.auth')
 from libreria_app.config.settings import AppConfig
 from libreria_app.services.session_store import SessionStore
 
@@ -66,11 +74,27 @@ class AuthService:
 
     def _persistir(self) -> None:
         if self.sesion:
-            self.store.guardar(self._login_url(), self.api.session.cookies, self.sesion.usuario)
+            self.store.guardar(self._login_url(), self.api.session.cookies, self.sesion.usuario, self.api.token)
+
+    def _recibir_token(self, r: ApiResult, origen: str) -> None:
+        """Toma el JWT de la respuesta y lo deja listo para las peticiones protegidas."""
+        bloque = r.data.get('token') if isinstance(r.data, dict) else None
+        token = (bloque or {}).get('access_token')
+        if not token:
+            logger.warning(f"{origen}: la respuesta no trae JWT; las escrituras responderan 401.")
+            return
+        self.api.token = token
+        logger.info(f"{origen}: JWT recibido del servicio de login {descripcion_token(token)} "
+                    f"tipo={bloque.get('token_type')} alg={bloque.get('algoritmo')} "
+                    f"vence en {bloque.get('expires_in')} s. Se conserva en memoria para "
+                    f"POST/PUT/PATCH/DELETE al servicio de libros.")
 
     def descartar_sesion_local(self) -> None:
-        """Olvida la sesion en este equipo (cookie en memoria y en disco)."""
+        """Olvida la sesion en este equipo (cookie y JWT, en memoria y en disco)."""
+        if self.api.token:
+            logger.info("Sesion local descartada: se olvida el JWT y la cookie.")
         self.sesion = None
+        self.api.token = None
         self.api.session.cookies.clear()
         self.store.borrar(self._login_url())
 
@@ -88,10 +112,12 @@ class AuthService:
     # ------------------------------------------------------------------
     def iniciar_sesion(self, email: str, password: str) -> ApiResult:
         self.api.session.cookies.clear()
+        self.api.token = None
         r = self.api.request('login', 'POST', '/login',
                              json_body={'email': email.strip(), 'password': password})
         if r.ok:
             self._actualizar_sesion(r.data['usuario'], r.data.get('sesion', {}))
+            self._recibir_token(r, 'Login')
             self._persistir()
         return r
 
@@ -99,7 +125,11 @@ class AuthService:
         """Avisa al servidor y, pase lo que pase, olvida la sesion local:
         aunque el servidor no responda, el usuario pidio salir."""
         r = self.api.request('login', 'POST', '/logout')
+        tenia_token = self.api.token is not None
         self.descartar_sesion_local()
+        logger.info(f"Logout: JWT {'eliminado' if tenia_token else '(no habia)'} de la aplicacion "
+                    f"(memoria y sesion.json). ApiClient.token = {self.api.token}. "
+                    f"Las siguientes peticiones iran SIN Authorization.")
         return r
 
     def restaurar_sesion(self) -> Optional[ApiResult]:
@@ -107,6 +137,9 @@ class AuthService:
         la sesion sigue vigente. None = no habia sesion guardada."""
         if self.store.restaurar(self._login_url(), self.api.session.cookies) is None:
             return None
+        self.api.token = self.store.token(self._login_url())
+        if self.api.token:
+            logger.info(f"JWT restaurado de la sesion guardada {descripcion_token(self.api.token)}")
         return self.consultar_sesion()
 
     def consultar_sesion(self) -> ApiResult:
@@ -122,7 +155,8 @@ class AuthService:
         r = self.api.request('login', 'POST', '/session/extend')
         if r.ok and self.sesion:
             self._actualizar_sesion(self.sesion.usuario, r.data.get('sesion', {}))
-            # El servidor emitio una cookie nueva con el vencimiento nuevo.
+            # El servidor emitio una cookie y un JWT nuevos con el vencimiento nuevo.
+            self._recibir_token(r, 'Sesion extendida')
             self._persistir()
         return r
 

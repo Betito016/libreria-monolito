@@ -12,7 +12,8 @@ from libreria_app.gui import theme
 from libreria_app.gui.theme import COLOR
 
 COLUMNAS = (('hora', 'Hora', 80), ('servicio', 'Servicio', 70), ('metodo', 'Método', 70),
-            ('url', 'URL', 430), ('status', 'HTTP', 60), ('resultado', 'Resultado', 260), ('ms', 'ms', 60))
+            ('auth', 'Auth', 70), ('url', 'URL', 400), ('status', 'HTTP', 60),
+            ('resultado', 'Resultado', 230), ('ms', 'ms', 60))
 
 
 class HttpLogView(ttk.Frame):
@@ -76,7 +77,7 @@ class HttpLogView(ttk.Frame):
             etiqueta = 'ok'
         resultado = r.codigo or r.mensaje
         item = self.arbol.insert('', 0, values=(
-            r.hora.strftime('%H:%M:%S'), r.servicio, r.metodo, r.url,
+            r.hora.strftime('%H:%M:%S'), r.servicio, r.metodo, r.autenticacion, r.url,
             r.status if r.status is not None else '—', resultado, r.duracion_ms,
         ), tags=(etiqueta,))
         self.registros[item] = r
@@ -86,7 +87,9 @@ class HttpLogView(ttk.Frame):
         if not seleccion:
             return
         r = self.registros[seleccion[0]]
-        self._escribir(self.enviado, r.cuerpo_enviado or '(sin cuerpo)')
+        auth = ('Authorization: Bearer [JWT PRESENTE]' if r.autenticacion == 'Bearer'
+                else 'Sin header Authorization (petición pública)')
+        self._escribir(self.enviado, f"{r.metodo} {r.url}\n{auth}\n\n{r.cuerpo_enviado or '(sin cuerpo)'}")
         self._escribir(self.recibido, r.respuesta or f"(sin respuesta JSON)\n{r.mensaje}")
 
     @staticmethod

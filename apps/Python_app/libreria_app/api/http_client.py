@@ -9,9 +9,22 @@ del servidor se convierten aqui en un resultado con un mensaje comprensible.
 Tambien lleva un registro de las ultimas peticiones (metodo, URL, codigo
 HTTP, cuerpo enviado) que la interfaz muestra en "Registro HTTP". Las
 contrasenas y tokens se enmascaran antes de guardarse en ese registro.
+
+AUTENTICACION (JWT)
+    El token que devuelve POST /login se guarda en `ApiClient.token`. Este
+    modulo lo agrega SOLO en las escrituras al servicio de libros
+    (POST, PUT, PATCH, DELETE) como "Authorization: Bearer <token>". Las
+    lecturas (GET) son publicas y viajan sin token. Ninguna pantalla ni
+    servicio arma el header: se decide aqui, en un solo lugar.
+
+LOGS EN CONSOLA (logger 'libreria.http')
+    Cada peticion registra metodo, URL, headers relevantes, si usa JWT, el
+    cuerpo enviado, el codigo HTTP y la respuesta. El token nunca se imprime
+    completo: se muestra como [JWT PRESENTE eyJhbGciOi…abcd (N caracteres)].
 """
 import copy
 import json
+import logging
 import threading
 import time
 from collections import deque
@@ -25,7 +38,23 @@ import requests
 from libreria_app.config.settings import AppConfig
 
 NOMBRES_SERVICIO = {'login': 'login', 'books': 'libros'}
-CAMPOS_SENSIBLES = {'password', 'password_actual', 'token'}
+CAMPOS_SENSIBLES = {'password', 'password_actual', 'token', 'access_token'}
+
+# Metodos que el servicio de libros protege con JWT. Los GET son publicos.
+METODOS_PROTEGIDOS = {'POST', 'PUT', 'PATCH', 'DELETE'}
+
+logger = logging.getLogger('libreria.http')
+
+
+def descripcion_token(token: Optional[str]) -> str:
+    """Representacion del JWT apta para logs: nunca el token completo."""
+    if not token:
+        return '[SIN JWT]'
+    return f"[JWT PRESENTE {token[:10]}…{token[-4:]} ({len(token)} caracteres)]"
+
+
+def _recortar(texto: str, limite: int) -> str:
+    return texto if len(texto) <= limite else texto[:limite] + f"… ({len(texto)} caracteres en total)"
 
 
 @dataclass
@@ -63,6 +92,7 @@ class RegistroPeticion:
     duracion_ms: int
     cuerpo_enviado: Optional[str]
     respuesta: Optional[str]
+    autenticacion: str = '—'      # 'Bearer' si viajo el JWT, '—' si no
 
 
 def _url_sin_secretos(url: str) -> str:
@@ -83,17 +113,17 @@ def _enmascarar(valor: Any) -> Any:
 class ApiClient:
     """Una sola sesion de `requests` para ambos servicios.
 
-    La sesion conserva la cookie que emite el login y la reenvia
-    automaticamente en cada peticion, incluidas las del servicio de libros:
-    las cookies se asocian al host, no al puerto, asi que la misma cookie
-    viaja a login (5000) y a libros (5001) cuando ambos estan en el mismo
-    servidor. Libros la reenvia a login para saber quien esta escribiendo.
+    - La cookie de sesion del login la conserva `self.session`: la usan
+      /session, /session/extend y /profile del servicio de login.
+    - El JWT lo conserva `self.token`: lo exige el servicio de libros en sus
+      escrituras y se envia como "Authorization: Bearer <token>".
     """
 
     def __init__(self, obtener_config: Callable[[], AppConfig]):
         self._obtener_config = obtener_config
         self.session = requests.Session()
         self.session.headers['Accept'] = 'application/json'
+        self.token: Optional[str] = None
         self._historial: deque = deque(maxlen=200)
         self._lock = threading.Lock()
         self._oyentes: List[Callable[[RegistroPeticion], None]] = []
@@ -111,6 +141,11 @@ class ApiClient:
         return f"{base}/{ruta.lstrip('/')}?{urlencode(consulta)}"
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def requiere_jwt(servicio: str, metodo: str) -> bool:
+        """Solo las escrituras al servicio de libros llevan el JWT."""
+        return servicio == 'books' and metodo.upper() in METODOS_PROTEGIDOS
+
     def request(
         self,
         servicio: str,
@@ -125,16 +160,25 @@ class ApiClient:
         base = self.url_base(servicio)
         url = self.construir_url(servicio, ruta, params)
         timeout = self._obtener_config().timeout_segundos
-        inicio = time.monotonic()
 
+        headers = {'Accept': 'application/json'}
+        if json_body is not None:
+            headers['Content-Type'] = 'application/json'
+        usa_jwt = self.requiere_jwt(servicio, metodo)
+        if usa_jwt and self.token:
+            headers['Authorization'] = f"Bearer {self.token}"
+        # Las comprobaciones periodicas de /health (registrar=False) van a
+        # nivel DEBUG para no llenar la consola cada 15 segundos.
+        nivel = logging.INFO if registrar else logging.DEBUG
+        self._log_peticion(nivel, nombre, metodo, url, headers, usa_jwt, json_body)
+
+        inicio = time.monotonic()
         try:
             if con_cookies:
-                respuesta = self.session.request(metodo, url, json=json_body, timeout=timeout)
+                respuesta = self.session.request(metodo, url, json=json_body, timeout=timeout, headers=headers)
             else:
                 # /health no necesita la cookie de sesion: no se envia.
-                respuesta = requests.request(
-                    metodo, url, json=json_body, timeout=timeout, headers={'Accept': 'application/json'}
-                )
+                respuesta = requests.request(metodo, url, json=json_body, timeout=timeout, headers=headers)
         except requests.exceptions.Timeout:
             resultado = self._fallo(metodo, url, inicio, 'TIEMPO_AGOTADO',
                                     f"El servicio de {nombre} no respondió en {timeout:g} segundos.")
@@ -154,9 +198,53 @@ class ApiClient:
         else:
             resultado = self._interpretar(respuesta, metodo, url, inicio, nombre, base)
 
+        self._log_respuesta(nivel, resultado)
         if registrar:
-            self._registrar(servicio, json_body, resultado)
+            self._registrar(servicio, json_body, resultado, 'Bearer' if 'Authorization' in headers else '—')
         return resultado
+
+    # ------------------------------------------------------------------
+    # Logs en consola
+    # ------------------------------------------------------------------
+    def _log_peticion(self, nivel: int, nombre: str, metodo: str, url: str, headers: Dict[str, str],
+                      usa_jwt: bool, cuerpo: Optional[Dict[str, Any]]) -> None:
+        if not logger.isEnabledFor(nivel):
+            return
+        visibles = [f"Accept: {headers['Accept']}"]
+        if 'Content-Type' in headers:
+            visibles.append(f"Content-Type: {headers['Content-Type']}")
+        if 'Authorization' in headers:
+            visibles.append(f"Authorization: Bearer {descripcion_token(self.token)}")
+
+        if not usa_jwt:
+            auth = 'no requerida (operacion publica / servicio de login): se envia SIN Authorization'
+        elif self.token:
+            auth = 'REQUERIDA (JWT) -> se envia el Bearer token recibido en el login'
+        else:
+            auth = 'REQUERIDA (JWT), pero NO hay token: se envia sin Authorization (el servidor respondera 401)'
+
+        lineas = [
+            f"--> {metodo} {_url_sin_secretos(url)}   [servicio de {nombre}]",
+            f"    Headers: {' | '.join(visibles)}",
+            f"    Autenticacion: {auth}",
+        ]
+        if cuerpo is not None:
+            enviado = json.dumps(_enmascarar(copy.deepcopy(cuerpo)), ensure_ascii=False)
+            lineas.append(f"    Datos enviados: {_recortar(enviado, 800)}")
+        logger.log(nivel, '\n'.join(lineas))
+
+    def _log_respuesta(self, nivel: int, r: ApiResult) -> None:
+        if not logger.isEnabledFor(nivel):
+            return
+        if r.status is None:
+            logger.log(nivel, f"<-- SIN RESPUESTA ({r.codigo}) en {r.duracion_ms} ms: {r.mensaje}")
+            return
+        resultado = 'EXITO' if r.ok else f"ERROR {r.codigo or ''}".strip()
+        lineas = [f"<-- HTTP {r.status} en {r.duracion_ms} ms | {resultado} | {r.mensaje}"]
+        if r.data is not None:
+            recibido = json.dumps(_enmascarar(r.data), ensure_ascii=False)
+            lineas.append(f"    Respuesta: {_recortar(recibido, 400)}")
+        logger.log(nivel, '\n'.join(lineas))
 
     # ------------------------------------------------------------------
     def _fallo(self, metodo: str, url: str, inicio: float, codigo: str, mensaje: str) -> ApiResult:
@@ -193,7 +281,8 @@ class ApiClient:
     # ------------------------------------------------------------------
     # Registro de peticiones
     # ------------------------------------------------------------------
-    def _registrar(self, servicio: str, cuerpo: Optional[Dict[str, Any]], r: ApiResult) -> None:
+    def _registrar(self, servicio: str, cuerpo: Optional[Dict[str, Any]], r: ApiResult,
+                   autenticacion: str = '—') -> None:
         cuerpo_txt = json.dumps(_enmascarar(copy.deepcopy(cuerpo)), ensure_ascii=False, indent=2) if cuerpo else None
         respuesta_txt = None
         if r.data is not None:
@@ -205,6 +294,7 @@ class ApiClient:
             hora=datetime.now(), servicio=servicio, metodo=r.metodo, url=_url_sin_secretos(r.url),
             status=r.status, ok=r.ok, codigo=r.codigo, mensaje=r.mensaje,
             duracion_ms=r.duracion_ms, cuerpo_enviado=cuerpo_txt, respuesta=respuesta_txt,
+            autenticacion=autenticacion,
         )
         with self._lock:
             self._historial.append(registro)

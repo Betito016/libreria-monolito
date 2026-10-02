@@ -34,6 +34,10 @@ RUTA_ERRORES = directorio_datos() / 'errores.log'
 TEXTO_SESION = {
     'ERR_SESION_EXPIRADA': 'Tu sesión expiró',
     'ERR_SESION_INVALIDA': 'El servidor ya no reconoce tu sesión',
+    # Respuestas 401 del servicio de libros al validar el JWT
+    'ERR_TOKEN_EXPIRADO': 'Tu token de acceso (JWT) expiró',
+    'ERR_TOKEN_INVALIDO': 'El servicio de libros rechazó tu token de acceso (JWT)',
+    'ERR_TOKEN_AUSENTE': 'No hay un token de acceso (JWT) para esta operación',
 }
 
 

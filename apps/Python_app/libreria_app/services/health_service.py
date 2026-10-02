@@ -68,7 +68,8 @@ def _motivo_degradado(datos: dict) -> str:
         return 'El servicio responde, pero no tiene acceso a su base de datos.'
     login = (datos.get('dependencias') or {}).get('login') or {}
     if login and not login.get('disponible', True):
-        return 'El catálogo se puede consultar, pero no modificar: el servicio de login no está disponible.'
+        return ('El catálogo funciona y los tokens ya emitidos siguen siendo válidos, pero el servicio '
+                'de login no responde: no se pueden iniciar sesiones nuevas.')
     return 'El servicio responde con una dependencia degradada.'
 
 
@@ -84,6 +85,9 @@ def _detalles(datos: dict) -> List[str]:
     login = (datos.get('dependencias') or {}).get('login')
     if login:
         lineas.append(f"Dependencia login: {'disponible' if login.get('disponible') else 'NO disponible'}")
+    autenticacion = datos.get('autenticacion')
+    if autenticacion:
+        lineas.append(f"Autenticación de escrituras: {autenticacion.get('tipo')} ({autenticacion.get('algoritmo')})")
     capacidades = datos.get('capacidades')
     if capacidades:
         lineas.append(

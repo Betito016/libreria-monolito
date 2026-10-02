@@ -67,7 +67,7 @@ class AvisoExpiracion(tk.Toplevel):
 
 
 # ----------------------------------------------------------------------
-# Detalle de un libro: GET /books/{isbn}
+# Detalle de un libro: GET /api/books/{isbn}
 # ----------------------------------------------------------------------
 CAMPOS_DETALLE = (
     ('isbn', 'ISBN'), ('titulo', 'Título'), ('autores', 'Autor(es)'), ('generos', 'Género(s)'),
@@ -105,7 +105,7 @@ class DetalleLibro(tk.Toplevel):
 
         self.estado = Mensaje(self, fondo=COLOR['superficie'])
         self.estado.pack(anchor='w')
-        self.estado.mostrar(f"Consultando GET /books/{isbn}…")
+        self.estado.mostrar(f"Consultando GET /api/books/{isbn}…")
 
         app.runner.run(app.books.detalle, isbn, al_terminar=self._cargado)
 
@@ -120,7 +120,7 @@ class DetalleLibro(tk.Toplevel):
                      else f"No se pudo obtener el detalle: {r.mensaje}")
             self.estado.mostrar(texto, 'error')
             return
-        self.estado.mostrar(f"GET /books/{self.isbn} → HTTP {r.status} ({r.duracion_ms} ms)", 'exito')
+        self.estado.mostrar(f"GET /api/books/{self.isbn} → HTTP {r.status} ({r.duracion_ms} ms)", 'exito')
         self._construir(r.data)
 
     def _construir(self, libro: dict) -> None:

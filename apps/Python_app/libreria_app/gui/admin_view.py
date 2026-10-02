@@ -18,7 +18,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Any, Dict, Optional, Tuple
 
-from libreria_app.api.http_client import ApiResult
+from libreria_app.api.http_client import ApiResult, descripcion_token
 from libreria_app.gui import theme
 from libreria_app.gui.theme import COLOR
 from libreria_app.gui.widgets import Mensaje
@@ -56,7 +56,7 @@ class AdminView(ttk.Frame):
         self.es_admin = es_admin = bool(app.auth.sesion and app.auth.sesion.es_administrador)
 
         ttk.Label(self, text='Administración de libros', style='Titulo.TLabel').pack(anchor='w')
-        ttk.Label(self, text='POST /books · PUT, PATCH y DELETE /books/{isbn} · requiere rol administrador',
+        ttk.Label(self, text='POST /api/books · PUT, PATCH y DELETE /api/books/{isbn} · requieren JWT (Authorization: Bearer) de administrador',
                   style='Suave.TLabel').pack(anchor='w', pady=(0, 8))
 
         if not es_admin:
@@ -166,7 +166,7 @@ class AdminView(ttk.Frame):
         if not isbn:
             self.mensaje.mostrar('Escribe el ISBN del libro que quieres cargar.', 'aviso')
             return
-        self.mensaje.mostrar(f"Consultando GET /books/{isbn}…")
+        self.mensaje.mostrar(f"Consultando GET /api/books/{isbn}…")
         self.app.runner.run(self.app.books.detalle, isbn, al_terminar=self._cargado)
 
     def _cargado(self, r) -> None:
@@ -300,7 +300,7 @@ class AdminView(ttk.Frame):
         confirmado = messagebox.askyesno(
             'Confirmar eliminación',
             f"¿Eliminar definitivamente este libro?\n\n{titulo}\nISBN {isbn}\n\n"
-            'Se enviará DELETE /books/' + isbn + ' al microservicio. Esta acción no se puede deshacer.',
+            'Se enviará DELETE /api/books/' + isbn + ' al microservicio. Esta acción no se puede deshacer.',
             icon='warning', parent=self.app,
         )
         if not confirmado:
@@ -350,7 +350,11 @@ class AdminView(ttk.Frame):
 
     def _mostrar_peticion(self, metodo: str, cuerpo: Optional[Dict[str, Any]], r: ApiResult) -> None:
         ruta = r.url.split('?')[0]
-        lineas = [f"{metodo} {ruta}", f"Respuesta: HTTP {r.status or '— (sin respuesta)'} · {r.duracion_ms} ms", '']
+        # Mismo criterio que ApiClient: las escrituras llevan el JWT si hay uno.
+        auth = (f"Authorization: Bearer {descripcion_token(self.app.api.token)}" if self.app.api.token
+                else 'Authorization: (sin JWT: el servidor responde 401)')
+        lineas = [f"{metodo} {ruta}", auth,
+                  f"Respuesta: HTTP {r.status or '— (sin respuesta)'} · {r.duracion_ms} ms", '']
         if cuerpo is not None:
             lineas.append(f"Cuerpo enviado ({len(cuerpo)} campo(s)):")
             lineas.append(json.dumps(cuerpo, ensure_ascii=False, indent=2))

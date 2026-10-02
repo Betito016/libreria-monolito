@@ -109,11 +109,13 @@ tasks.BackgroundRunner.run()         manda el trabajo a un hilo aparte
 books_service.modificar(isbn, cambios)
         │
         ▼
-http_client.ApiClient.request()      arma  PATCH http://host:5001/books/{isbn}?format=json
-        │                            con la cookie de sesión y timeout
+http_client.ApiClient.request()      arma  PATCH http://host:5001/api/books/{isbn}?format=json
+        │                            con  Authorization: Bearer <JWT>  y timeout,
+        │                            y lo registra en la consola (token enmascarado)
         ▼
 ────────── red ──────────►  microservicio de libros
-                                 ├─ pregunta a login GET /session con la cookie → ¿administrador?
+                                 ├─ @requiere_jwt_administrador: firma, algoritmo,
+                                 │  vencimiento y rol administrador del JWT
                                  ├─ valida los datos, UPDATE en PostgreSQL
                                  └─ responde HTTP 200 + JSON del libro
         ◄──────────────────
@@ -140,21 +142,64 @@ Si en cualquier punto la respuesta es **401**, `app.verificar_sesion()` descarta
 | Extender sesión | POST | `/session/extend` | login |
 | Modificar perfil | PATCH | `/profile` | login |
 | Estado | GET | `/health` | ambos |
-| Catálogo y búsqueda | GET | `/books?isbn=&titulo=&anio=&precio_min=&precio_max=` | libros |
-| Detalle con conceptos | GET | `/books/{isbn}` | libros |
-| Categorías | GET | `/categories` | libros |
-| Registrar | POST | `/books` | libros |
-| Actualización completa | PUT | `/books/{isbn}` | libros |
-| Actualización parcial | PATCH | `/books/{isbn}` | libros |
-| Eliminar | DELETE | `/books/{isbn}` | libros |
+| Catálogo y búsqueda | GET | `/api/books?isbn=&titulo=&anio=&precio_min=&precio_max=` | libros · público |
+| Detalle con conceptos | GET | `/api/books/{isbn}` | libros · público |
+| Categorías | GET | `/categories` | libros · público |
+| Registrar | POST | `/api/books` | libros · **Bearer JWT** |
+| Actualización completa | PUT | `/api/books/{isbn}` | libros · **Bearer JWT** |
+| Actualización parcial | PATCH | `/api/books/{isbn}` | libros · **Bearer JWT** |
+| Eliminar | DELETE | `/api/books/{isbn}` | libros · **Bearer JWT** |
 
 Todas las peticiones llevan `?format=json` (los servicios responden XML por defecto).
 
+### Flujo JWT
+
+```
+Login (POST /login, público) ──► el servicio de login valida credenciales y emite un JWT
+        │
+        ▼
+AuthService._recibir_token()  ──► guarda el token en ApiClient.token (y en sesion.json)
+        │
+        ▼
+GET /api/books (público)      ──► viaja SIN Authorization
+        │
+        ▼
+POST/PUT/PATCH/DELETE         ──► ApiClient.request() agrega  Authorization: Bearer <token>
+        │
+        ▼
+Servicio de libros            ──► valida firma, algoritmo y vencimiento; exige rol administrador
+        │
+        ▼
+401 (token ausente, inválido o expirado) ──► la app regresa al inicio de sesión con el motivo
+```
+
+El header se agrega **en un solo lugar**: `ApiClient.request()` (`api/http_client.py`), solo cuando el servicio es libros y el método es POST, PUT, PATCH o DELETE. Ninguna pantalla ni servicio arma headers.
+
 ### Quién conserva la sesión
 
-- **El servidor** (microservicio de login) es la autoridad: la sesión vive en una cookie firmada que él emite (`libreria_login_session`), con un vencimiento absoluto de 30 minutos que solo se prorroga con `POST /session/extend`.
-- **En memoria**, `ApiClient.session` (una `requests.Session`) guarda esa cookie y la envía en cada petición, también al servicio de libros (las cookies se asocian al host, no al puerto).
-- **En disco**, `SessionStore` guarda la cookie para no pedir credenciales al reabrir la app. Al arrancar, **siempre** se valida con `GET /session`: tener la cookie guardada no garantiza que la sesión siga viva.
+- **El servidor** (microservicio de login) es la autoridad. Emite dos credenciales que vencen juntas (30 minutos, prorrogables con `POST /session/extend`):
+  - la **cookie** `libreria_login_session`, que usan `/session`, `/session/extend` y `/profile`;
+  - el **JWT**, que el servicio de libros exige en sus escrituras.
+- **En memoria**, `ApiClient.session` (una `requests.Session`) guarda la cookie y `ApiClient.token` guarda el JWT.
+- **En disco**, `SessionStore` guarda la cookie y el JWT para no pedir credenciales al reabrir la app. Al arrancar, **siempre** se valida con `GET /session`: tenerlos guardados no garantiza que la sesión siga viva.
+- **Al cerrar sesión**, la app olvida ambos. Un JWT no se puede revocar en el servidor: una copia seguiría siendo válida hasta que venza.
+
+### Logs en consola
+
+Al ejecutar `python main.py`, la consola muestra cada petición:
+
+```
+--> PATCH http://127.0.0.1:5001/api/books/978...?format=json   [servicio de libros]
+    Headers: Accept: application/json | Content-Type: application/json | Authorization: Bearer [JWT PRESENTE eyJhbGciOi…sZ1g (288 caracteres)]
+    Autenticacion: REQUERIDA (JWT) -> se envia el Bearer token recibido en el login
+    Datos enviados: {"precio": 150.0}
+<-- HTTP 200 en 10 ms | EXITO | Libro modificado parcialmente.
+    Respuesta: {...}
+```
+
+- **El token nunca se imprime completo**, solo sus primeros y últimos caracteres. Contraseñas y `access_token` aparecen como `••••••`.
+- **Comprobaciones de `/health`:** las periódicas no se muestran para no llenar la consola cada 15 s. Para verlas: `set LIBRERIA_LOG=DEBUG`.
+- **Registro HTTP:** la sección del mismo nombre, dentro de la app, tiene la columna **Auth** (`Bearer` o `—`).
 
 ### PUT vs PATCH
 
@@ -181,11 +226,19 @@ Se comprueba automáticamente cada 15 s (configurable), y con el botón **Compro
 
 ---
 
+### Pruebas
+
+```powershell
+.\venv\Scripts\python -m pytest -q
+```
+
+`tests/test_http_client_jwt.py` comprueba que las escrituras a libros llevan `Authorization: Bearer`, que los GET y el login no lo llevan, y que los logs marcan el token sin revelarlo.
+
 ## 7. Problemas conocidos
 
 - **Sin HTTPS.** Los servicios del curso usan HTTP plano: credenciales y cookie viajan sin cifrar.
-- **La cookie guardada es una credencial** mientras la sesión esté vigente: quien copie `sesion.json` podría actuar como el usuario hasta que expire.
-- **Cerrar sesión no invalida copias de la cookie.** La sesión de Flask vive en una cookie firmada, sin estado en el servidor: `POST /logout` hace que *este* cliente la olvide, pero una copia tomada antes seguiría siendo válida hasta su vencimiento.
+- **La cookie y el JWT guardados son credenciales** mientras estén vigentes: quien copie `sesion.json` podría actuar como el usuario hasta que expiren.
+- **Cerrar sesión no invalida copias de la cookie ni del JWT.** Ninguno tiene estado en el servidor: `POST /logout` hace que *este* cliente los olvide, pero una copia tomada antes seguiría siendo válida hasta su vencimiento (30 minutos).
 - **Correo de verificación en la instancia GCP:** Google Cloud bloquea el puerto 25 saliente, así que el correo se genera y queda en la cola de Postfix, pero no llega a buzones externos. El código de verificación se puede leer en el servidor con `sudo mailq` y `sudo postcat -q <id>`.
 - **Portadas:** para varios ISBN de `library.xml`, Open Library no tiene portada (devuelve una imagen de 1×1). La aplicación lo muestra como *Imagen no disponible*.
 - **Local y remoto con distinto host:** si login y libros se configuran en servidores diferentes, la cookie del login no viaja al servicio de libros y las escrituras responderán 401.
@@ -197,9 +250,10 @@ Se comprueba automáticamente cada 15 s (configurable), y con el botón **Compro
 | Ambos servicios en 🔴 al abrir | Direcciones equivocadas o servicios apagados | **Configuración → Probar conexión** para ver cuál falla |
 | 🔴 "respondió, pero no como el servicio de libros" | El puerto apunta a otro programa (p. ej. Nginx en el 80) | Corregir el puerto |
 | 🔴 "no respondió en N segundos" | Firewall o servicio caído | Revisar firewall de GCP / `firewalld` y `systemctl status library-books` |
-| Libros en 🟡 "no se puede modificar" | El servicio de login está caído | Levantar `library-login`; la consulta del catálogo sigue funcionando |
+| Libros en 🟡 "no se pueden iniciar sesiones nuevas" | El servicio de login está caído | Levantar `library-login`. Mientras tanto, el catálogo y las sesiones ya iniciadas (su JWT) siguen funcionando |
 | Login: "todavía no puede iniciar sesión" (403) | Correo sin verificar | Pestaña **Verificar correo** con el código recibido |
 | "Tu cuenta no tiene permisos" (403) al guardar | La cuenta tiene rol `cliente` | El CRUD requiere un administrador |
+| "Tu token de acceso (JWT) expiró" o "rechazó tu token" (401) | El JWT venció o `JWT_SECRET` no es igual en login y libros | Iniciar sesión de nuevo; revisar que ambos `.env` tengan la misma `JWT_SECRET` |
 | Al abrir pide iniciar sesión otra vez | La sesión guardada expiró (30 min) o se cambió de servidor | Iniciar sesión de nuevo |
 | `ModuleNotFoundError: PIL` o `requests` | No se activó el entorno virtual | `.\venv\Scripts\activate` y `pip install -r requirements.txt` |
 | Aparece un diálogo "Error inesperado" | Error no previsto | El detalle queda en `%APPDATA%\LibreriaPythonApp\errores.log` |

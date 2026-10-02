@@ -1,6 +1,6 @@
 """
-Catalogo: consulta y busqueda de libros (GET /books) y acceso al detalle
-(GET /books/{isbn}). Todo sale del microservicio de libros; la aplicacion
+Catalogo: consulta y busqueda de libros (GET /api/books) y acceso al detalle
+(GET /api/books/{isbn}). Todo sale del microservicio de libros; la aplicacion
 no guarda una copia propia del catalogo.
 """
 import tkinter as tk
@@ -30,7 +30,7 @@ class CatalogView(ttk.Frame):
         self.cargado = False
 
         ttk.Label(self, text='Catálogo de libros', style='Titulo.TLabel').pack(anchor='w')
-        ttk.Label(self, text='Datos obtenidos del microservicio de libros · GET /books?format=json',
+        ttk.Label(self, text='Datos obtenidos del microservicio de libros · GET /api/books?format=json · público, sin JWT',
                   style='Suave.TLabel').pack(anchor='w', pady=(0, 10))
 
         # --- Busqueda ---
@@ -137,7 +137,7 @@ class CatalogView(ttk.Frame):
         self.etiqueta_pagina.configure(text=f"Página {datos['page']} de {self.total_paginas}")
         self.anterior.state(['!disabled'] if self.pagina > 1 else ['disabled'])
         self.siguiente.state(['!disabled'] if self.pagina < self.total_paginas else ['disabled'])
-        self.mensaje.mostrar(f"GET /books → HTTP {r.status} en {r.duracion_ms} ms", 'exito')
+        self.mensaje.mostrar(f"GET /api/books → HTTP {r.status} en {r.duracion_ms} ms", 'exito')
 
         self._vaciar()
         if not datos['libros']:
