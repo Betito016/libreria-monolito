@@ -12,10 +12,11 @@ contrasenas y tokens se enmascaran antes de guardarse en ese registro.
 
 AUTENTICACION (JWT)
     El token que devuelve POST /login se guarda en `ApiClient.token`. Este
-    modulo lo agrega SOLO en las escrituras al servicio de libros
-    (POST, PUT, PATCH, DELETE) como "Authorization: Bearer <token>". Las
-    lecturas (GET) son publicas y viajan sin token. Ninguna pantalla ni
-    servicio arma el header: se decide aqui, en un solo lugar.
+    modulo decide, en un solo lugar, cuando agregar "Authorization: Bearer":
+        books, authors          solo escrituras (POST, PUT, PATCH, DELETE)
+        users, pedidos, pagos   todo, salvo /health y /roles (datos privados)
+        login                   PATCH /profile y POST /logout (para revocar el token)
+    Ninguna pantalla ni servicio arma el header.
 
 LOGS EN CONSOLA (logger 'libreria.http')
     Cada peticion registra metodo, URL, headers relevantes, si usa JWT, el
@@ -35,13 +36,17 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
-from libreria_app.config.settings import AppConfig
+from libreria_app.config.settings import NOMBRE_SERVICIO, AppConfig
 
-NOMBRES_SERVICIO = {'login': 'login', 'books': 'libros'}
-CAMPOS_SENSIBLES = {'password', 'password_actual', 'token', 'access_token'}
+NOMBRES_SERVICIO = {k: v.lower() for k, v in NOMBRE_SERVICIO.items()}
+CAMPOS_SENSIBLES = {'password', 'password_actual', 'token', 'access_token', 'refresh_token'}
 
-# Metodos que el servicio de libros protege con JWT. Los GET son publicos.
+# Metodos de escritura: siempre protegidos con JWT.
 METODOS_PROTEGIDOS = {'POST', 'PUT', 'PATCH', 'DELETE'}
+# Servicios con lecturas publicas (catalogo); en los demas, todo es privado.
+LECTURA_PUBLICA = {'books', 'authors'}
+RUTAS_PUBLICAS = {'/health', '/roles', '/metrics'}
+RUTAS_LOGIN_CON_JWT = {'/profile', '/logout'}
 
 logger = logging.getLogger('libreria.http')
 
@@ -68,6 +73,7 @@ class ApiResult:
     metodo: str
     url: str
     duracion_ms: int
+    cabeceras: Dict[str, str] = field(default_factory=dict)   # p. ej. X-Cache: HIT | MISS
 
     @property
     def sin_conexion(self) -> bool:
@@ -111,12 +117,12 @@ def _enmascarar(valor: Any) -> Any:
 
 
 class ApiClient:
-    """Una sola sesion de `requests` para ambos servicios.
+    """Una sola sesion de `requests` para los 6 microservicios.
 
     - La cookie de sesion del login la conserva `self.session`: la usan
-      /session, /session/extend y /profile del servicio de login.
-    - El JWT lo conserva `self.token`: lo exige el servicio de libros en sus
-      escrituras y se envia como "Authorization: Bearer <token>".
+      /session y /session/extend del servicio de login.
+    - El JWT lo conserva `self.token` y se envia como "Authorization: Bearer"
+      solo donde `requiere_jwt` lo indica (nunca a rutas publicas).
     """
 
     def __init__(self, obtener_config: Callable[[], AppConfig]):
@@ -130,8 +136,12 @@ class ApiClient:
 
     # ------------------------------------------------------------------
     def url_base(self, servicio: str) -> str:
-        config = self._obtener_config()
-        return config.login_url if servicio == 'login' else config.books_url
+        return self._obtener_config().url(servicio)
+
+    def _verificar_tls(self):
+        """HTTPS de la instancia con certificado autofirmado: se confia en su CA."""
+        ca = self._obtener_config().certificado_ca
+        return ca if ca else True
 
     def construir_url(self, servicio: str, ruta: str, params: Optional[Dict[str, Any]] = None) -> str:
         """Une la direccion configurada con la ruta del endpoint sin duplicar
@@ -142,9 +152,15 @@ class ApiClient:
 
     # ------------------------------------------------------------------
     @staticmethod
-    def requiere_jwt(servicio: str, metodo: str) -> bool:
-        """Solo las escrituras al servicio de libros llevan el JWT."""
-        return servicio == 'books' and metodo.upper() in METODOS_PROTEGIDOS
+    def requiere_jwt(servicio: str, metodo: str, ruta: str = '') -> bool:
+        ruta = '/' + ruta.split('?')[0].strip('/')
+        if ruta in RUTAS_PUBLICAS:
+            return False
+        if servicio == 'login':
+            return ruta in RUTAS_LOGIN_CON_JWT
+        if servicio in LECTURA_PUBLICA:
+            return metodo.upper() in METODOS_PROTEGIDOS
+        return True
 
     def request(
         self,
@@ -155,16 +171,17 @@ class ApiClient:
         params: Optional[Dict[str, Any]] = None,
         con_cookies: bool = True,
         registrar: bool = True,
+        extra_headers: Optional[Dict[str, str]] = None,
     ) -> ApiResult:
         nombre = NOMBRES_SERVICIO.get(servicio, servicio)
         base = self.url_base(servicio)
         url = self.construir_url(servicio, ruta, params)
         timeout = self._obtener_config().timeout_segundos
 
-        headers = {'Accept': 'application/json'}
+        headers = {'Accept': 'application/json', **(extra_headers or {})}
         if json_body is not None:
             headers['Content-Type'] = 'application/json'
-        usa_jwt = self.requiere_jwt(servicio, metodo)
+        usa_jwt = self.requiere_jwt(servicio, metodo, ruta)
         if usa_jwt and self.token:
             headers['Authorization'] = f"Bearer {self.token}"
         # Las comprobaciones periodicas de /health (registrar=False) van a
@@ -174,11 +191,18 @@ class ApiClient:
 
         inicio = time.monotonic()
         try:
+            verificar = self._verificar_tls()
             if con_cookies:
-                respuesta = self.session.request(metodo, url, json=json_body, timeout=timeout, headers=headers)
+                respuesta = self.session.request(metodo, url, json=json_body, timeout=timeout, headers=headers,
+                                                 verify=verificar)
             else:
                 # /health no necesita la cookie de sesion: no se envia.
-                respuesta = requests.request(metodo, url, json=json_body, timeout=timeout, headers=headers)
+                respuesta = requests.request(metodo, url, json=json_body, timeout=timeout, headers=headers,
+                                             verify=verificar)
+        except requests.exceptions.SSLError:
+            resultado = self._fallo(metodo, url, inicio, 'TLS_INVALIDO',
+                                    f"El certificado HTTPS de {base} no es de confianza. Configura el certificado "
+                                    "de la instancia en Configuración.")
         except requests.exceptions.Timeout:
             resultado = self._fallo(metodo, url, inicio, 'TIEMPO_AGOTADO',
                                     f"El servicio de {nombre} no respondió en {timeout:g} segundos.")
@@ -240,7 +264,8 @@ class ApiClient:
             logger.log(nivel, f"<-- SIN RESPUESTA ({r.codigo}) en {r.duracion_ms} ms: {r.mensaje}")
             return
         resultado = 'EXITO' if r.ok else f"ERROR {r.codigo or ''}".strip()
-        lineas = [f"<-- HTTP {r.status} en {r.duracion_ms} ms | {resultado} | {r.mensaje}"]
+        cache = f" | X-Cache: {r.cabeceras['X-Cache']}" if r.cabeceras.get('X-Cache') else ''
+        lineas = [f"<-- HTTP {r.status} en {r.duracion_ms} ms | {resultado}{cache} | {r.mensaje}"]
         if r.data is not None:
             recibido = json.dumps(_enmascarar(r.data), ensure_ascii=False)
             lineas.append(f"    Respuesta: {_recortar(recibido, 400)}")
@@ -268,15 +293,16 @@ class ApiClient:
                 metodo=metodo, url=url, duracion_ms=duracion,
             )
 
+        cabeceras = {k: v for k, v in respuesta.headers.items() if k.lower() in ('x-cache', 'location', 'www-authenticate')}
         exito = 200 <= respuesta.status_code < 300
         if exito:
             mensaje = (datos.get('mensaje') if isinstance(datos, dict) else None) or 'Operación correcta.'
-            return ApiResult(True, respuesta.status_code, datos, None, mensaje, metodo, url, duracion)
+            return ApiResult(True, respuesta.status_code, datos, None, mensaje, metodo, url, duracion, cabeceras)
 
         codigo = datos.get('codigo_error') if isinstance(datos, dict) else None
         mensaje = (datos.get('mensaje') if isinstance(datos, dict) else None) or \
             f"El servicio de {nombre} respondió con el código HTTP {respuesta.status_code}."
-        return ApiResult(False, respuesta.status_code, datos, codigo, mensaje, metodo, url, duracion)
+        return ApiResult(False, respuesta.status_code, datos, codigo, mensaje, metodo, url, duracion, cabeceras)
 
     # ------------------------------------------------------------------
     # Registro de peticiones

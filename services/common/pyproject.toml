@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "libreria-common"
+version = "1.0.0"
+description = "Codigo compartido de los microservicios de la Libreria: JWT, Redis, cache, metricas y respuestas XML/JSON"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0.0",
+    "PyJWT>=2.8.0",
+    "redis>=5.0.0",
+    "psycopg[binary]>=3.2.0",
+    "psycopg_pool>=3.2.0",
+]
+
+[project.optional-dependencies]
+pruebas = ["pytest>=8.0", "fakeredis>=2.20"]
+
+[tool.setuptools]
+packages = ["libreria_common"]

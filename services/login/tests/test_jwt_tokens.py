@@ -1,59 +1,47 @@
 """
-Pruebas de la emision de JWT del microservicio de login (sin base de datos).
+Emision del JWT de acceso (sin base de datos ni Redis).
 
     cd services/login
     venv\\Scripts\\python -m pytest -q
 """
-import os
 import sys
 import time
 from pathlib import Path
 
 import jwt
 
-CLAVE = 'clave-de-prueba-solo-para-tests-0123456789abcdef'
-os.environ['JWT_SECRET'] = CLAVE
-os.environ['JWT_ALGORITHM'] = 'HS256'
-os.environ['JWT_ISSUER'] = 'libreria-login'
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from auth.jwt_tokens import descripcion_segura, emitir_token  # noqa: E402
+from auth.jwt_tokens import descripcion_segura, emitir_access_token, huella, nuevo_refresh_token  # noqa: E402
+from libreria_common.config import ConfigComun  # noqa: E402
 
-USUARIO = {'id': 7, 'email': 'admin@libreria.test', 'rol': 'administrador'}
+CLAVE = 'clave-de-prueba-solo-para-tests-0123456789abcdef'
+CONFIG = ConfigComun(jwt_secret_key=CLAVE, redis_url='redis://x')
+USUARIO = {'id': 'u-7', 'email': 'admin@libreria.test', 'rol': 'administrador', 'role_id': 1}
 
 
-def test_token_firmado_con_claims_esperados():
-    expira = int(time.time()) + 1800
-    bloque = emitir_token(USUARIO, expira)
-    assert bloque['token_type'] == 'Bearer'
-    assert bloque['algoritmo'] == 'HS256'
+def test_access_token_hs256_20_minutos_con_claims_requeridos():
+    bloque = emitir_access_token(CONFIG, USUARIO, sid='s-1')
     claims = jwt.decode(bloque['access_token'], CLAVE, algorithms=['HS256'], issuer='libreria-login')
-    assert claims['sub'] == '7'
-    assert claims['rol'] == 'administrador'
-    assert claims['email'] == 'admin@libreria.test'
-    assert claims['exp'] == expira
-    assert 1795 <= bloque['expires_in'] <= 1800
+    assert jwt.get_unverified_header(bloque['access_token'])['alg'] == 'HS256'
+    assert claims['user_id'] == claims['sub'] == 'u-7'
+    assert claims['role_id'] == 1 and claims['rol'] == 'administrador'
+    assert claims['sid'] == 's-1' and claims['typ'] == 'access'
+    assert claims['jti'] == bloque['jti'] and len(claims['jti']) == 32
+    assert claims['exp'] - claims['iat'] == 20 * 60
+    assert bloque['expires_in'] == 20 * 60
 
 
-def test_vencimiento_maximo_30_minutos():
-    bloque = emitir_token(USUARIO, int(time.time()) + 8 * 3600)   # sesion configurada de 8 h
-    claims = jwt.decode(bloque['access_token'], CLAVE, algorithms=['HS256'])
-    assert claims['exp'] - claims['iat'] <= 30 * 60
-    assert bloque['expires_in'] <= 30 * 60
+def test_cada_token_tiene_jti_distinto():
+    assert emitir_access_token(CONFIG, USUARIO, 's')['jti'] != emitir_access_token(CONFIG, USUARIO, 's')['jti']
 
 
-def test_token_no_valida_con_otra_clave():
-    bloque = emitir_token(USUARIO, int(time.time()) + 60)
-    try:
-        jwt.decode(bloque['access_token'], 'otra-clave-0123456789-0123456789-xx', algorithms=['HS256'])
-    except jwt.InvalidSignatureError:
-        return
-    raise AssertionError('Un token debe fallar al validarse con otra clave')
+def test_refresh_token_opaco_y_huella():
+    r1, r2 = nuevo_refresh_token(), nuevo_refresh_token()
+    assert r1 != r2 and len(r1) >= 60
+    assert huella(r1) != r1 and len(huella(r1)) == 64
 
 
-def test_descripcion_segura_no_revela_el_token():
-    t = emitir_token(USUARIO, int(time.time()) + 60)['access_token']
-    texto = descripcion_segura(t)
-    assert texto.startswith('[JWT PRESENTE')
-    assert t not in texto
-    assert descripcion_segura('') == '[SIN JWT]'
+def test_descripcion_segura():
+    t = emitir_access_token(CONFIG, USUARIO, 's')['access_token']
+    assert t not in descripcion_segura(t)

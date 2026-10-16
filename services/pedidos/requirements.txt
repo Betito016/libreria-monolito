@@ -1,0 +1,5 @@
+flask>=3.0.0
+python-dotenv>=1.0.0
+# Codigo compartido (JWT, Redis, PostgreSQL, cache, candados, metricas). Instalar desde services/pedidos:
+#   pip install -r requirements.txt
+-e ../common

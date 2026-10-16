@@ -2,15 +2,19 @@
 Ventana principal: arma los servicios, decide que pantalla mostrar y
 coordina lo que es de TODA la aplicacion:
 
-  - Arranque: valida con el servidor la sesion guardada (GET /session).
-  - Monitoreo de salud: GET /health a ambos servicios cada N segundos.
-  - Reloj de sesion: cuenta regresiva, aviso antes de expirar y cierre
-    controlado cuando el servidor confirma que la sesion ya no es valida.
-  - Manejo central del 401: venga de donde venga, un "sesion invalida"
-    regresa a la pantalla de login con un mensaje, sin cerrar la app.
+  - Arranque: valida con el servidor la sesion guardada (GET /session) y, si
+    el JWT guardado esta por expirar, lo renueva.
+  - Monitoreo de salud: GET /health a los 6 microservicios cada N segundos.
+  - Reloj del JWT (20 min): cuando le quedan `renovar_antes_segundos`, la app
+    lo renueva SOLA con el refresh token (POST /token/refresh). Si el
+    servidor ya no acepta el refresh, regresa al login.
+  - Manejo central del 401: venga de donde venga, un token invalido, expirado
+    o revocado regresa a la pantalla de login con el motivo, sin cerrar la app.
   - Errores inesperados: se muestran en un dialogo y se guardan en un
     archivo, en lugar de un traceback en la consola.
 """
+import logging
+import time
 import traceback
 import tkinter as tk
 from datetime import datetime
@@ -24,20 +28,26 @@ from libreria_app.gui.tasks import BackgroundRunner
 from libreria_app.gui.widgets import ImagenesRemotas
 from libreria_app.services import health_service
 from libreria_app.services.auth_service import AuthService
+from libreria_app.services.authors_service import AuthorsService
 from libreria_app.services.books_service import BooksService
 from libreria_app.services.health_service import EstadoServicio
+from libreria_app.services.orders_service import OrdersService
+from libreria_app.services.payments_service import PaymentsService
 from libreria_app.services.session_store import SessionStore
+from libreria_app.services.users_service import UsersService
 
 RUTA_ERRORES = directorio_datos() / 'errores.log'
+logger = logging.getLogger('libreria.app')
 
 # Motivo del 401 segun el codigo de error de los microservicios
 TEXTO_SESION = {
     'ERR_SESION_EXPIRADA': 'Tu sesión expiró',
     'ERR_SESION_INVALIDA': 'El servidor ya no reconoce tu sesión',
-    # Respuestas 401 del servicio de libros al validar el JWT
     'ERR_TOKEN_EXPIRADO': 'Tu token de acceso (JWT) expiró',
-    'ERR_TOKEN_INVALIDO': 'El servicio de libros rechazó tu token de acceso (JWT)',
+    'ERR_TOKEN_INVALIDO': 'Un microservicio rechazó tu token de acceso (JWT)',
     'ERR_TOKEN_AUSENTE': 'No hay un token de acceso (JWT) para esta operación',
+    'ERR_TOKEN_REVOCADO': 'Tu token fue revocado (se cerró la sesión o cambiaron tus credenciales o tu rol)',
+    'ERR_REFRESH_INVALIDO': 'Tu sesión ya no se puede renovar',
 }
 
 
@@ -57,6 +67,10 @@ class LibreriaApp(tk.Tk):
         self.api = ApiClient(lambda: self.config_app)
         self.auth = AuthService(self.api, SessionStore(), lambda: self.config_app)
         self.books = BooksService(self.api)
+        self.users = UsersService(self.api)
+        self.authors = AuthorsService(self.api)
+        self.orders = OrdersService(self.api)
+        self.payments = PaymentsService(self.api)
         self.runner = BackgroundRunner(self)
         self.imagenes = ImagenesRemotas(self.runner)
 
@@ -65,8 +79,8 @@ class LibreriaApp(tk.Tk):
         self._salud_en_curso = False
         self._trabajo_salud: Optional[str] = None
         self._trabajo_reloj: Optional[str] = None
-        self._aviso_expiracion = None
-        self._aviso_descartado = False
+        self._renovando = False
+        self._reintentar_renovacion = 0.0
 
         self.vista: Optional[tk.Widget] = None
         self.report_callback_exception = self._error_inesperado
@@ -87,8 +101,7 @@ class LibreriaApp(tk.Tk):
     def _mostrar_arranque(self) -> None:
         cuadro = ttk.Frame(self)
         ttk.Label(cuadro, text='Librería en Línea', style='Titulo.TLabel').pack(pady=(260, 8))
-        ttk.Label(cuadro, text='Validando la sesión guardada con el servidor…',
-                  style='Suave.TLabel').pack()
+        ttk.Label(cuadro, text='Validando la sesión guardada con el servidor…', style='Suave.TLabel').pack()
         self._cambiar_vista(cuadro)
         self.runner.run(self.auth.restaurar_sesion, al_terminar=self._arranque_listo)
 
@@ -97,10 +110,10 @@ class LibreriaApp(tk.Tk):
             self.mostrar_login('No se pudo validar la sesión guardada.', 'error')
         elif r is None:
             self.mostrar_login()
-        elif r.ok and r.data.get('autenticado'):
+        elif r.ok and self.auth.sesion is not None:
             self.mostrar_panel()
         elif r.ok:
-            motivo = r.data.get('motivo')
+            motivo = r.data.get('motivo') if isinstance(r.data, dict) else None
             texto = ('Tu sesión guardada expiró. Inicia sesión de nuevo.' if motivo == 'expirada'
                      else 'La sesión guardada ya no es válida en el servidor. Inicia sesión de nuevo.')
             self.mostrar_login(texto, 'aviso')
@@ -137,11 +150,12 @@ class LibreriaApp(tk.Tk):
 
     def cerrar_sesion(self) -> None:
         def listo(r):
-            self.mostrar_login('Sesión cerrada.', 'exito')
+            self.mostrar_login('Sesión cerrada: el servidor revocó tu token.' if getattr(r, 'ok', False)
+                               else 'Sesión cerrada en este equipo.', 'exito')
         self.runner.run(self.auth.cerrar_sesion, al_terminar=listo)
 
     # ==================================================================
-    # Monitoreo de salud (GET /health a ambos servicios)
+    # Monitoreo de salud (GET /health a los 6 microservicios)
     # ==================================================================
     def al_cambiar_salud(self, oyente: Callable[[Dict[str, EstadoServicio]], None]) -> None:
         self._oyentes_salud.append(oyente)
@@ -162,8 +176,8 @@ class LibreriaApp(tk.Tk):
             return
         self._salud_en_curso = True
 
-        def comprobar_ambos():
-            return {s: health_service.comprobar(self.api, s, registrar=manual) for s in ('login', 'books')}
+        def comprobar_todos():
+            return {s: health_service.comprobar(self.api, s, registrar=manual) for s in health_service.CLAVES}
 
         def listo(estados):
             self._salud_en_curso = False
@@ -174,81 +188,53 @@ class LibreriaApp(tk.Tk):
             intervalo = int(self.config_app.intervalo_salud_segundos) * 1000
             self._trabajo_salud = self.after(intervalo, self.comprobar_salud)
 
-        self.runner.run(comprobar_ambos, al_terminar=listo)
+        self.runner.run(comprobar_todos, al_terminar=listo)
 
     # ==================================================================
-    # Reloj de sesion
+    # Reloj del JWT y renovacion automatica
     # ==================================================================
     def _iniciar_reloj(self) -> None:
         self._detener_reloj()
-        self._aviso_descartado = False
         self._tic()
 
     def _detener_reloj(self) -> None:
         if self._trabajo_reloj:
             self.after_cancel(self._trabajo_reloj)
             self._trabajo_reloj = None
-        self._cerrar_aviso()
 
     def _tic(self) -> None:
         sesion = self.auth.sesion
         if sesion is None:
             return
         restantes = sesion.segundos_restantes()
-
-        if restantes <= 0:
-            # El reloj local dice que vencio: se confirma con el servidor
-            # antes de sacar al usuario (el servidor es la autoridad).
-            self._trabajo_reloj = None
-            self.runner.run(self.auth.consultar_sesion, al_terminar=self._confirmar_expiracion)
-            return
-
-        por_expirar = restantes <= int(self.config_app.aviso_expiracion_segundos)
-        if por_expirar and not self._aviso_descartado:
-            self._mostrar_aviso()
-        if self._aviso_expiracion is not None:
-            self._aviso_expiracion.actualizar(restantes)
+        por_renovar = restantes <= int(self.config_app.renovar_antes_segundos)
+        if por_renovar and not self._renovando and time.monotonic() >= self._reintentar_renovacion:
+            logger.info(f"Al JWT le quedan {restantes} s: renovacion automatica con el refresh token")
+            self.renovar_token()
         if hasattr(self.vista, 'actualizar_reloj'):
-            self.vista.actualizar_reloj(restantes, por_expirar)
-
+            self.vista.actualizar_reloj(restantes, por_renovar)
         self._trabajo_reloj = self.after(1000, self._tic)
 
-    def _confirmar_expiracion(self, r) -> None:
-        if isinstance(r, ApiResult) and r.ok and r.data.get('autenticado'):
-            self._iniciar_reloj()   # el servidor la extendio o el reloj local se adelanto
-        elif isinstance(r, ApiResult) and r.ok:
-            self.sesion_terminada('Tu sesión expiró.')
-        else:
-            # Sin respuesta del servidor: por seguridad se cierra la sesion local.
-            self.sesion_terminada('Tu sesión expiró y no se pudo confirmar con el servidor.')
+    def renovar_token(self, al_terminar: Optional[Callable[[ApiResult], None]] = None) -> None:
+        """POST /token/refresh. 401: la sesion no puede seguir -> login.
+        Sin respuesta: se reintenta en 15 s mientras al token le quede vida."""
+        self._renovando = True
 
-    def _mostrar_aviso(self) -> None:
-        if self._aviso_expiracion is None:
-            from libreria_app.gui.dialogs import AvisoExpiracion
-            self._aviso_expiracion = AvisoExpiracion(self, al_extender=self.extender_sesion,
-                                                     al_descartar=self._descartar_aviso)
-
-    def _descartar_aviso(self) -> None:
-        """El usuario cerro el aviso sin extender: no se vuelve a abrir en
-        esta sesion (la barra superior sigue mostrando la cuenta en rojo)."""
-        self._aviso_descartado = True
-        self._cerrar_aviso()
-
-    def _cerrar_aviso(self) -> None:
-        if self._aviso_expiracion is not None:
-            self._aviso_expiracion.destroy()
-            self._aviso_expiracion = None
-
-    def extender_sesion(self, al_terminar: Optional[Callable[[ApiResult], None]] = None) -> None:
         def listo(r):
-            if self.verificar_sesion(r):
-                return
+            self._renovando = False
             if isinstance(r, ApiResult) and r.ok:
-                self._cerrar_aviso()
-                self._iniciar_reloj()
+                self._reintentar_renovacion = 0.0
+            elif isinstance(r, ApiResult) and r.status == 401:
+                self.sesion_terminada(f"{TEXTO_SESION.get(r.codigo, 'No se pudo renovar tu sesión')} (HTTP 401).")
+                return
+            else:
+                self._reintentar_renovacion = time.monotonic() + 15
+                if self.auth.sesion and self.auth.sesion.segundos_restantes() <= 0:
+                    self.sesion_terminada('Tu token expiró y no se pudo renovar (el servicio de login no respondió).')
+                    return
             if al_terminar:
                 al_terminar(r)
-        self.runner.run(self.auth.extender_sesion, al_terminar=listo)
+        self.runner.run(self.auth.renovar, al_terminar=listo)
 
     # ==================================================================
     # Configuracion
@@ -263,6 +249,8 @@ class LibreriaApp(tk.Tk):
         if nueva.login_url != servidor_anterior and self.auth.sesion is not None:
             # La sesion pertenece al servidor anterior: en el nuevo no existe.
             self.auth.sesion = None
+            self.api.token = None
+            self.auth.refresh_token = None
             self.api.session.cookies.clear()
             self.mostrar_login('Cambiaste de servidor de login: inicia sesión en el nuevo servidor.', 'aviso')
 

@@ -1,59 +1,67 @@
 """
-Emision de JWT de acceso.
+Emision del JWT de acceso. Login es el UNICO servicio que firma tokens; los
+otros cinco los validan con la misma JWT_SECRET_KEY (libreria_common.seguridad).
 
-Login es el UNICO que firma tokens. El servicio de libros los valida con la
-misma clave (JWT_SECRET) y el mismo algoritmo (JWT_ALGORITHM), sin tener que
-preguntarle a login en cada peticion.
+Claims del token de acceso (HS256, 20 minutos como maximo):
+    sub, user_id   id del usuario
+    email          correo del usuario
+    role_id, rol   rol del usuario (1 administrador, 2 cliente)
+    sid            id de la sesion en Redis (session:<sid>), para cerrarla en /logout
+    jti            id unico del token: clave de la lista de revocacion (jwt:revoked:<jti>)
+    typ            'access'
+    iss, iat, exp  emisor, emision y vencimiento
 
-Contenido del token (claims):
-    sub    id del usuario
-    email  correo del usuario
-    rol    'administrador' | 'cliente'  (libros exige administrador para escribir)
-    iss    emisor: 'libreria-login'
-    iat    emitido en (epoch UTC)
-    exp    vence en (epoch UTC): el mismo instante que la sesion, para que
-           token y sesion expiren juntos y POST /session/extend prorrogue ambos.
-
-El token viaja en la respuesta de /login y de /session/extend, nunca en logs:
-en los logs solo aparece su descripcion segura (ver `descripcion_segura`).
+El refresh token NO es un JWT: es un valor aleatorio opaco que solo existe en
+Redis (refresh:<sha256>), y se rota en cada renovacion.
 """
+import hashlib
+import secrets
 import time
+import uuid
 from typing import Any, Dict
 
 import jwt
 
-from config.config import Config
+from libreria_common.config import ConfigComun
 
 
-JWT_MAX_MINUTOS = 30
-
-
-def emitir_token(usuario: Dict[str, Any], expira_en: int) -> Dict[str, Any]:
-    """Firma un token para `usuario` que vence en `expira_en` (epoch UTC), sin
-    pasar nunca de JWT_MAX_MINUTOS aunque la sesion se configure mas larga.
-    Devuelve el bloque que se agrega a la respuesta: el token y su metadata."""
+def emitir_access_token(config: ConfigComun, usuario: Dict[str, Any], sid: str) -> Dict[str, Any]:
     ahora = int(time.time())
-    expira_en = min(expira_en, ahora + JWT_MAX_MINUTOS * 60)
+    expira = ahora + config.access_token_minutos * 60
+    jti = uuid.uuid4().hex
     claims = {
         'sub': str(usuario['id']),
+        'user_id': str(usuario['id']),
         'email': usuario['email'],
+        'role_id': int(usuario['role_id']),
         'rol': usuario['rol'],
-        'iss': Config.JWT_ISSUER,
+        'sid': sid,
+        'jti': jti,
+        'typ': 'access',
+        'iss': config.jwt_issuer,
         'iat': ahora,
-        'exp': expira_en,
+        'exp': expira,
     }
-    token = jwt.encode(claims, Config.JWT_SECRET, algorithm=Config.JWT_ALGORITHM)
     return {
-        'access_token': token,
+        'access_token': jwt.encode(claims, config.jwt_secret_key, algorithm=config.jwt_algorithm),
         'token_type': 'Bearer',
-        'algoritmo': Config.JWT_ALGORITHM,
-        'expira_en_epoch': expira_en,
-        'expires_in': max(0, expira_en - ahora),
+        'algoritmo': config.jwt_algorithm,
+        'jti': jti,
+        'expira_en_epoch': expira,
+        'expires_in': expira - ahora,
     }
+
+
+def nuevo_refresh_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def huella(refresh_token: str) -> str:
+    """En Redis se guarda la huella SHA-256, nunca el refresh token en claro."""
+    return hashlib.sha256(refresh_token.encode()).hexdigest()
 
 
 def descripcion_segura(token: str) -> str:
-    """Representacion del token apta para logs: nunca el token completo."""
     if not token:
-        return '[SIN JWT]'
-    return f"[JWT PRESENTE {token[:10]}…{token[-4:]} ({len(token)} caracteres)]"
+        return '[SIN TOKEN]'
+    return f"[PRESENTE {token[:10]}…{token[-4:]} ({len(token)} caracteres)]"

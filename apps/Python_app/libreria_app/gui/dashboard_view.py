@@ -1,16 +1,21 @@
 """
 Panel principal. Separa claramente las funciones de la aplicacion:
 
-    Catalogo            consulta, busqueda y detalle      (servicio de libros)
-    Administracion      alta, PUT, PATCH y baja            (servicio de libros)
-    Sesion y perfil     datos de la sesion y del usuario   (servicio de login)
-    Estado de servicios semaforo de ambos microservicios   (/health)
+    Catalogo            consulta, busqueda y detalle      (books, publico)
+    Autores             autores y sus libros              (authors, lectura publica)
+    Pedidos             crear, cancelar, enviar           (pedidos, JWT)
+    Pagos               pagar y reembolsar                (pagos, JWT)
+    Libros (admin)      alta, PUT, PATCH y baja            (books, JWT administrador)
+    Usuarios            usuarios y roles                  (users, JWT administrador)
+    Sesion y perfil     datos de la sesion y del usuario   (login)
+    Estado de servicios semaforo de los 6 microservicios  (/health)
     Configuracion       direcciones de los servidores      (archivo local)
     Registro HTTP       peticiones realizadas y respuestas
 """
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from libreria_app.config.settings import SERVICIOS
 from libreria_app.gui import theme
 from libreria_app.gui.dialogs import mmss
 from libreria_app.gui.theme import COLOR
@@ -20,7 +25,11 @@ BARRA = COLOR['barra_lateral']
 
 SECCIONES = (
     ('catalogo', '📖  Catálogo'),
-    ('admin', '🛠  Administración'),
+    ('autores', '✍  Autores'),
+    ('pedidos', '🛒  Pedidos'),
+    ('pagos', '💳  Pagos'),
+    ('admin', '🛠  Libros (admin)'),
+    ('usuarios', '👥  Usuarios'),
     ('perfil', '👤  Sesión y perfil'),
     ('estado', '🚦  Estado de servicios'),
     ('config', '⚙  Configuración'),
@@ -42,15 +51,15 @@ class DashboardView(ttk.Frame):
                  font=(theme.FUENTE, 14, 'bold')).pack(side='left')
 
         self.luces = {}
-        for servicio, nombre in (('login', 'Login'), ('books', 'Libros')):
-            luz = Semaforo(superior, 12, fondo=BARRA)
-            luz.pack(side='left', padx=(22, 4))
-            tk.Label(superior, text=nombre, bg=BARRA, fg=COLOR['texto_claro']).pack(side='left')
+        for servicio, nombre, _ in SERVICIOS:
+            luz = Semaforo(superior, 11, fondo=BARRA)
+            luz.pack(side='left', padx=(14, 3))
+            tk.Label(superior, text=nombre, bg=BARRA, fg=COLOR['texto_claro'], font=(theme.FUENTE, 9)).pack(side='left')
             self.luces[servicio] = luz
         app.al_cambiar_salud(self._salud)
 
         ttk.Button(superior, text='Cerrar sesión', command=app.cerrar_sesion).pack(side='right')
-        ttk.Button(superior, text='Extender', command=self._extender).pack(side='right', padx=6)
+        ttk.Button(superior, text='Renovar', command=self._extender).pack(side='right', padx=6)
         self.reloj = tk.Label(superior, text='', bg=BARRA, fg=COLOR['texto_claro'],
                               font=(theme.FUENTE, 10, 'bold'))
         self.reloj.pack(side='right', padx=10)
@@ -81,15 +90,23 @@ class DashboardView(ttk.Frame):
         contenedor.columnconfigure(0, weight=1)
 
         from libreria_app.gui.admin_view import AdminView
+        from libreria_app.gui.authors_view import AuthorsView
         from libreria_app.gui.catalog_view import CatalogView
         from libreria_app.gui.config_view import ConfigView
         from libreria_app.gui.http_log_view import HttpLogView
+        from libreria_app.gui.orders_view import OrdersView
+        from libreria_app.gui.payments_view import PaymentsView
         from libreria_app.gui.profile_view import ProfileView
         from libreria_app.gui.status_view import StatusView
+        from libreria_app.gui.users_view import UsersView
 
         self.secciones = {
             'catalogo': CatalogView(contenedor, app, self),
+            'autores': AuthorsView(contenedor, app, self),
+            'pedidos': OrdersView(contenedor, app, self),
+            'pagos': PaymentsView(contenedor, app, self),
             'admin': AdminView(contenedor, app, self),
+            'usuarios': UsersView(contenedor, app, self),
             'perfil': ProfileView(contenedor, app),
             'estado': StatusView(contenedor, app),
             'config': ConfigView(contenedor, app),
@@ -119,13 +136,13 @@ class DashboardView(ttk.Frame):
     def _extender(self) -> None:
         def listo(r):
             if not getattr(r, 'ok', False):
-                messagebox.showwarning('No se pudo extender la sesión', getattr(r, 'mensaje', str(r)),
+                messagebox.showwarning('No se pudo renovar el token', getattr(r, 'mensaje', str(r)),
                                        parent=self.app)
-        self.app.extender_sesion(al_terminar=listo)
+        self.app.renovar_token(al_terminar=listo)
 
     def actualizar_reloj(self, restantes: int, por_expirar: bool) -> None:
-        self.reloj.configure(text=f"Sesión: {mmss(restantes)}",
-                             fg='#fca5a5' if por_expirar else COLOR['texto_claro'])
+        self.reloj.configure(text=f"JWT: {mmss(restantes)}" + (' · renovando' if por_expirar else ''),
+                             fg='#fde68a' if por_expirar else COLOR['texto_claro'])
         perfil = self.secciones.get('perfil')
         if perfil:
             perfil.actualizar_reloj(restantes)
@@ -139,3 +156,13 @@ class DashboardView(ttk.Frame):
         """Tras un POST/PUT/PATCH/DELETE el catalogo se vuelve a pedir al
         servidor: lo que se ve refleja el estado real, no una copia local."""
         self.secciones['catalogo'].recargar()
+
+    def pagar_pedido(self, pedido) -> None:
+        """Desde Pedidos ('Pagar ->'): abre Pagos con ese pedido elegido."""
+        self.ir('pagos')
+        self.secciones['pagos'].preparar_pago(pedido)
+
+    def pedidos_modificados(self) -> None:
+        """Un pago o reembolso cambia el estado del pedido (y el stock)."""
+        self.secciones['pedidos'].recargar()
+        self.catalogo_modificado()

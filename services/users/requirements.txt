@@ -1,0 +1,6 @@
+flask>=3.0.0
+python-dotenv>=1.0.0
+bcrypt>=4.1.0
+# Codigo compartido (JWT, Redis, PostgreSQL, cache, metricas). Instalar desde services/users:
+#   pip install -r requirements.txt
+-e ../common

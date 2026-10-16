@@ -30,9 +30,9 @@ Las escrituras exigen el header:
 Authorization: Bearer <access_token>
 ```
 
-El token lo emite el microservicio de **login** (`POST /login` → `token.access_token`). Este servicio lo valida **localmente** con la misma clave y el mismo algoritmo (`JWT_SECRET`, `JWT_ALGORITHM`, `JWT_ISSUER` idénticos en ambos `.env`), así que no consulta al login en cada petición.
+El token lo emite el microservicio de **login** (`POST /login` → `token.access_token`). Este servicio lo valida **localmente** con la misma clave y el mismo algoritmo (`JWT_SECRET_KEY`, `JWT_ALGORITHM`, `JWT_ISSUER` idénticos en los 6 `.env`) y después consulta en Redis si fue revocado (`jwt:revoked:<jti>`, `jwt:revoked_before:<user_id>`).
 
-La protección es **selectiva**: solo las cuatro rutas de escritura llevan el decorador `@requiere_jwt_administrador` (`auth/jwt_auth.py`). No hay middleware global; los GET, `/categories` y `/health` siguen públicos.
+La protección es **selectiva**: solo las cuatro rutas de escritura llevan `servicio.auth.requiere_jwt(roles=[ROL_ADMINISTRADOR])` (validador compartido de [`libreria_common`](../common/README.md)). Los GET, `/categories` y `/health` siguen públicos.
 
 | Situación | Respuesta |
 |---|---|
@@ -42,13 +42,25 @@ La protección es **selectiva**: solo las cuatro rutas de escritura llevan el de
 | Algoritmo distinto de `JWT_ALGORITHM` (incluido `none`) | 401 `ERR_TOKEN_INVALIDO` |
 | Emisor distinto o faltan claims (`exp`, `iat`, `sub`, `iss`) | 401 `ERR_TOKEN_INVALIDO` |
 | Token expirado | 401 `ERR_TOKEN_EXPIRADO` |
+| Token revocado (logout, renovación, cambio de contraseña o rol) | 401 `ERR_TOKEN_REVOCADO` |
 | Token válido, pero rol `cliente` | 403 `ERR_SIN_PERMISOS` |
+| Redis no responde: no se puede comprobar la revocación | 503 |
 
 Las respuestas 401 incluyen `WWW-Authenticate: Bearer …` (RFC 6750).
 
 **Si el login cae:** las lecturas y las escrituras con tokens ya emitidos siguen funcionando, pero nadie puede iniciar sesión para obtener uno nuevo. `/health` responde `degradado` con `autenticacion.emision_de_tokens = false`.
 
-**Límite conocido:** un JWT no se puede revocar. Cerrar sesión hace que el cliente lo olvide, pero una copia seguiría siendo válida hasta su vencimiento (30 minutos, igual que la sesión).
+## Caché en Redis
+
+| Clave | Endpoint |
+|---|---|
+| `books:list:<filtros>` | `GET /api/books` (una entrada por combinación de filtros y página) |
+| `books:<isbn>` | `GET /api/books/{isbn}` |
+| `books:categories` | `GET /categories` |
+
+- TTL corto: `CACHE_TTL_SECONDS` (60 s). Las respuestas llevan `X-Cache: HIT | MISS`.
+- **Invalidación:** cada `POST`, `PUT`, `PATCH` o `DELETE`, después del `COMMIT`, borra `books:list:*`, `books:<isbn>` y `authors:*` (con `SCAN` + `UNLINK`). authors, pedidos y pagos también borran `books:*` cuando cambian autores o stock.
+- **Opcional:** si Redis no responde, la lectura va a PostgreSQL y responde igual. La autorización, en cambio, sí falla segura (503).
 
 ### Logs
 
@@ -68,7 +80,7 @@ Cada petición deja en la consola del servicio si la ruta es pública o protegid
 venv\Scripts\python -m pytest -q
 ```
 
-`tests/test_jwt_auth.py` cubre GET públicos, escrituras sin token, con token válido, token malformado, firma alterada, otro algoritmo, `alg=none`, otro emisor, token expirado, rol cliente (403) y que los logs no revelan el token. No necesita PostgreSQL ni el login.
+`tests/test_jwt_auth.py` (30 pruebas, con `fakeredis`) cubre GET públicos, escrituras sin token, con token válido, token malformado, firma alterada, otro algoritmo, `alg=none`, otro emisor, token expirado, token revocado, rol cliente (403), caché HIT/MISS e invalidación, Redis caído y que los logs no revelan el token. No necesita PostgreSQL, Redis ni el login.
 
 ## Modelo de datos
 
@@ -106,7 +118,7 @@ CREATE ROLE books_app_user WITH LOGIN PASSWORD '<password-generada>';
 psql -d libreria_db -f sql/01_catalogo_libros.sql
 
 # 3. Entorno y ejecución
-cp .env.example .env         # completar DB_PASSWORD, JWT_SECRET (la misma de login) y LOGIN_SERVICE_URL
+cp .env.example .env         # completar DB_PASSWORD, JWT_SECRET_KEY (la misma de login), REDIS_URL y LOGIN_SERVICE_URL
 python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ./venv/bin/python app.py

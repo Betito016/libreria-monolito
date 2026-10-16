@@ -21,8 +21,10 @@ from datetime import datetime
 from typing import List, Optional
 
 from libreria_app.api.http_client import ApiClient
+from libreria_app.config.settings import NOMBRE_SERVICIO, SERVICIOS
 
-NOMBRES = {'login': 'Microservicio de Login', 'books': 'Microservicio de Libros'}
+NOMBRES = {clave: f'Microservicio de {nombre}' for clave, nombre in NOMBRE_SERVICIO.items()}
+CLAVES = tuple(clave for clave, _, _ in SERVICIOS)
 
 
 @dataclass
@@ -66,6 +68,10 @@ def _motivo_degradado(datos: dict) -> str:
     pg = datos.get('postgresql') or {}
     if not pg.get('conectado', True):
         return 'El servicio responde, pero no tiene acceso a su base de datos.'
+    redis_estado = datos.get('redis') or {}
+    if redis_estado and not redis_estado.get('disponible', True):
+        return ('Redis no responde: las lecturas públicas siguen (desde PostgreSQL), pero las operaciones '
+                'con sesión o token se rechazan por seguridad (no se puede comprobar la revocación).')
     login = (datos.get('dependencias') or {}).get('login') or {}
     if login and not login.get('disponible', True):
         return ('El catálogo funciona y los tokens ya emitidos siguen siendo válidos, pero el servicio '
@@ -82,6 +88,10 @@ def _detalles(datos: dict) -> List[str]:
             lineas.append(f"PostgreSQL: conectado a {pg.get('base_datos')}{extra}")
         else:
             lineas.append('PostgreSQL: SIN CONEXIÓN')
+    redis_estado = datos.get('redis') or {}
+    if redis_estado:
+        lineas.append('Redis: ' + (f"disponible ({redis_estado.get('latencia_ms')} ms)" if redis_estado.get('disponible')
+                                   else f"SIN CONEXIÓN ({redis_estado.get('error')})"))
     login = (datos.get('dependencias') or {}).get('login')
     if login:
         lineas.append(f"Dependencia login: {'disponible' if login.get('disponible') else 'NO disponible'}")
@@ -89,9 +99,8 @@ def _detalles(datos: dict) -> List[str]:
     if autenticacion:
         lineas.append(f"Autenticación de escrituras: {autenticacion.get('tipo')} ({autenticacion.get('algoritmo')})")
     capacidades = datos.get('capacidades')
+    nombres = {'lectura': 'Lectura', 'escritura': 'Escritura', 'cache': 'Caché',
+               'inicio_de_sesion': 'Inicio de sesión', 'registro': 'Registro'}
     if capacidades:
-        lineas.append(
-            f"Lectura: {'sí' if capacidades.get('lectura') else 'no'} · "
-            f"Escritura: {'sí' if capacidades.get('escritura') else 'no'}"
-        )
+        lineas.append(' · '.join(f"{nombres.get(k, k)}: {'sí' if v else 'no'}" for k, v in capacidades.items()))
     return lineas

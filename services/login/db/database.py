@@ -94,7 +94,8 @@ class UserRepository:
                              password_hash, rol, email_verificado)
                         VALUES (%s, %s, %s, %s, %s, 'cliente', %s)
                         RETURNING id, nombre, apellido_paterno, apellido_materno,
-                                  email, rol, activo, email_verificado, fecha_registro
+                                  email, rol, (SELECT r.id FROM roles r WHERE r.nombre = rol::text) AS role_id,
+                                  activo, email_verificado, fecha_registro
                         """,
                         (nombre, apellido_paterno, apellido_materno, email,
                          password_hash, email_verificado),
@@ -121,7 +122,8 @@ class UserRepository:
                     cur.execute(
                         """
                         SELECT id, nombre, apellido_paterno, apellido_materno, email,
-                               password_hash, rol, activo, email_verificado, fecha_registro
+                               password_hash, rol, (SELECT r.id FROM roles r WHERE r.nombre = rol::text) AS role_id,
+                               activo, email_verificado, fecha_registro
                         FROM usuarios
                         WHERE lower(email) = lower(%s)
                         """,
@@ -213,7 +215,7 @@ class UserRepository:
                         SET email_verificado = TRUE, actualizado_en = now()
                         WHERE id = %s
                         RETURNING id, nombre, apellido_paterno, apellido_materno,
-                                  email, rol, activo, email_verificado
+                                  email, rol, (SELECT r.id FROM roles r WHERE r.nombre = rol::text) AS role_id, activo, email_verificado
                         """,
                         (fila['usuario_id'],),
                     )
@@ -232,7 +234,8 @@ class UserRepository:
                     cur.execute(
                         """
                         SELECT id, nombre, apellido_paterno, apellido_materno, email,
-                               rol, activo, email_verificado, fecha_registro
+                               rol, (SELECT r.id FROM roles r WHERE r.nombre = rol::text) AS role_id,
+                               activo, email_verificado, fecha_registro
                         FROM usuarios
                         WHERE id = %s
                         """,
@@ -281,7 +284,7 @@ class UserRepository:
             UPDATE usuarios SET {asignaciones}, actualizado_en = now()
             WHERE id = %s
             RETURNING id, nombre, apellido_paterno, apellido_materno, email,
-                      rol, activo, email_verificado, fecha_registro
+                      rol, (SELECT r.id FROM roles r WHERE r.nombre = rol::text) AS role_id, activo, email_verificado, fecha_registro
             """
         ).format(asignaciones=asignaciones)
         parametros = [cambios[c] for c in columnas] + [user_id]

@@ -1,9 +1,8 @@
-"""Ventanas secundarias: aviso de expiracion y detalle de un libro."""
+"""Ventanas secundarias: detalle de un libro."""
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Optional
 
-from libreria_app.api.http_client import ApiResult
 from libreria_app.gui import theme
 from libreria_app.gui.theme import COLOR
 from libreria_app.gui.widgets import ImagenesRemotas, Mensaje
@@ -11,59 +10,6 @@ from libreria_app.gui.widgets import ImagenesRemotas, Mensaje
 
 def mmss(segundos: int) -> str:
     return f"{segundos // 60:02d}:{segundos % 60:02d}"
-
-
-# ----------------------------------------------------------------------
-# Aviso de expiracion de sesion
-# ----------------------------------------------------------------------
-class AvisoExpiracion(tk.Toplevel):
-    """No es modal: el usuario puede seguir trabajando mientras lo ve."""
-
-    def __init__(self, app, al_extender: Callable, al_descartar: Callable):
-        super().__init__(app)
-        self.al_extender = al_extender
-        self.title('Tu sesión está por expirar')
-        self.configure(bg=COLOR['superficie'], padx=24, pady=20)
-        self.resizable(False, False)
-        self.transient(app)
-        self.protocol('WM_DELETE_WINDOW', al_descartar)
-
-        tk.Label(self, text='⏳  Tu sesión está por expirar', bg=COLOR['superficie'],
-                 font=(theme.FUENTE, 13, 'bold')).pack(anchor='w')
-        self.cuenta = tk.Label(self, text='', bg=COLOR['superficie'], fg=COLOR['aviso'],
-                               font=(theme.FUENTE, 22, 'bold'))
-        self.cuenta.pack(anchor='w', pady=(8, 4))
-        tk.Label(self, text='Si no la extiendes, al llegar a cero tendrás que iniciar sesión de nuevo.',
-                 bg=COLOR['superficie'], fg=COLOR['texto_suave']).pack(anchor='w')
-
-        self.mensaje = Mensaje(self, fondo=COLOR['superficie'], ancho=380)
-        self.mensaje.pack(anchor='w', pady=(8, 0))
-
-        botones = tk.Frame(self, bg=COLOR['superficie'])
-        botones.pack(fill='x', pady=(12, 0))
-        self.boton_extender = ttk.Button(botones, text='Extender sesión', style='Primario.TButton',
-                                         command=self._extender)
-        self.boton_extender.pack(side='left')
-        ttk.Button(botones, text='Seguir sin extender', command=al_descartar).pack(side='left', padx=8)
-
-        self.update_idletasks()
-        x = app.winfo_rootx() + (app.winfo_width() - self.winfo_width()) // 2
-        y = app.winfo_rooty() + 120
-        self.geometry(f"+{x}+{y}")
-        self.lift()
-
-    def actualizar(self, restantes: int) -> None:
-        self.cuenta.configure(text=f"La sesión expira en {mmss(restantes)}")
-
-    def _extender(self) -> None:
-        self.boton_extender.state(['disabled'])
-        self.mensaje.mostrar('Solicitando la extensión al servidor (POST /session/extend)…')
-
-        def listo(r):
-            if isinstance(r, ApiResult) and not r.ok and self.winfo_exists():
-                self.boton_extender.state(['!disabled'])
-                self.mensaje.mostrar(f"No se pudo extender: {r.mensaje}", 'error')
-        self.al_extender(al_terminar=listo)
 
 
 # ----------------------------------------------------------------------

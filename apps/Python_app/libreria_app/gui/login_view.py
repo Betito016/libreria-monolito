@@ -9,6 +9,7 @@ from tkinter import ttk
 from typing import Optional
 
 from libreria_app.api.http_client import ApiResult
+from libreria_app.config.settings import SERVICIOS
 from libreria_app.gui import theme
 from libreria_app.gui.theme import COLOR
 from libreria_app.gui.widgets import Mensaje, Semaforo, formulario
@@ -28,7 +29,7 @@ class LoginView(ttk.Frame):
 
         tk.Label(tarjeta, text='📚  Librería en Línea', bg=SUP,
                  font=(theme.FUENTE, 20, 'bold')).pack(anchor='w')
-        tk.Label(tarjeta, text='Cliente de escritorio de los microservicios de login y libros',
+        tk.Label(tarjeta, text='Cliente de escritorio de los 6 microservicios (JWT + Redis)',
                  bg=SUP, fg=COLOR['texto_suave']).pack(anchor='w', pady=(2, 12))
 
         # --- Servidores y su estado ---
@@ -36,15 +37,16 @@ class LoginView(ttk.Frame):
         servidores.pack(fill='x', pady=(0, 10))
         self.luces = {}
         self.etiquetas = {}
-        for fila, (servicio, nombre) in enumerate((('login', 'Login'), ('books', 'Libros'))):
+        for indice, (servicio, nombre, _) in enumerate(SERVICIOS):
+            fila, columna = indice % 3, (indice // 3) * 2
             luz = Semaforo(servidores, 12, fondo=SUP)
-            luz.grid(row=fila, column=0, padx=(0, 6), pady=2)
-            etiqueta = tk.Label(servidores, bg=SUP, fg=COLOR['texto_suave'], anchor='w')
-            etiqueta.grid(row=fila, column=1, sticky='w')
+            luz.grid(row=fila, column=columna, padx=(0 if columna == 0 else 14, 6), pady=2)
+            etiqueta = tk.Label(servidores, bg=SUP, fg=COLOR['texto_suave'], anchor='w', font=(theme.FUENTE, 9))
+            etiqueta.grid(row=fila, column=columna + 1, sticky='w')
             self.luces[servicio] = luz
             self.etiquetas[servicio] = (nombre, etiqueta)
         ttk.Button(servidores, text='⚙ Configurar servidor', command=self._abrir_configuracion).grid(
-            row=0, column=2, rowspan=2, padx=(24, 0))
+            row=3, column=0, columnspan=4, sticky='w', pady=(6, 0))
         self._actualizar_servidores()
         app.al_cambiar_salud(self._salud)
 

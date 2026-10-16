@@ -4,3 +4,7 @@ psycopg_pool>=3.2.0
 requests>=2.31.0
 python-dotenv>=1.0.0
 PyJWT>=2.8.0
+redis>=5.0.0
+# Codigo compartido (JWT, Redis, cache, metricas). Instalar desde services/books:
+#   pip install -r requirements.txt
+-e ../common

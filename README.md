@@ -1,5 +1,7 @@
 # web-monolito — Librería en Línea
 
+> **Microservicios + Redis:** los 6 microservicios (login, books, users, authors, pedidos, pagos), la capa Redis compartida y la app de escritorio se documentan en [docs/REDIS_MICROSERVICIOS.md](docs/REDIS_MICROSERVICIOS.md). Este README cubre el monolito Node.js original.
+
 Aplicación web **monolítica** en Node.js + Express + EJS (renderizado 100%
 del lado del servidor) con acceso directo a PostgreSQL (sin ORM). Sigue el
 patrón **MVC** y una **organización de código por módulos** (uno por

@@ -2,40 +2,51 @@
 
 Microservicio **independiente** de autenticación y gestión básica de usuarios para la plataforma de librería en línea.
 
-**Stack:** Python · Flask · Psycopg 3 · PostgreSQL
+**Stack:** Python · Flask · Psycopg 3 · PostgreSQL · Redis
 **Puerto:** 5000
 **Base de datos:** `library_db` (la misma del monolito Node.js — no se crea una base paralela)
+
+Arquitectura de los 6 servicios y de la capa Redis: [docs/REDIS_MICROSERVICIOS.md](../../docs/REDIS_MICROSERVICIOS.md).
 
 ---
 
 ## Endpoints
 
-| Método   | Endpoint    | Función                                          |
-|----------|-------------|--------------------------------------------------|
-| POST     | `/register` | Registrar un nuevo usuario y enviar correo de verificación |
-| POST     | `/login`    | Autenticar al usuario e iniciar sesión            |
-| POST     | `/logout`   | Cerrar la sesión                                  |
-| GET      | `/session`  | Consultar la sesión, el perfil y cuánto le queda  |
-| POST     | `/session/extend` | Prorrogar la sesión vigente                 |
-| PATCH    | `/profile`  | Modificar nombre, apellidos, correo o contraseña  |
-| GET      | `/health`   | Verificar el estado del microservicio y PostgreSQL |
-| GET/POST | `/verify`   | Canjear el token del correo y marcar el correo como verificado |
+| Método   | Endpoint    | Función                                          | Acceso |
+|----------|-------------|--------------------------------------------------|---|
+| POST     | `/register` | Registrar un nuevo usuario y enviar correo de verificación | público |
+| GET/POST | `/verify`   | Canjear el token del correo y marcar el correo como verificado | público |
+| POST     | `/login`    | Validar credenciales, crear la sesión en Redis y emitir JWT + refresh token | público |
+| POST     | `/token/refresh` | Renovar el JWT con el refresh token (rotación, un solo uso) | refresh token |
+| POST     | `/session/extend` | Renovar el JWT con la cookie de sesión       | cookie |
+| GET      | `/session`  | Consultar la sesión, el perfil y cuánto le queda  | cookie |
+| POST     | `/logout`   | Revocar el JWT y borrar sesión y refresh token     | Bearer |
+| PATCH    | `/profile`  | Modificar nombre, apellidos, correo o contraseña  | Bearer |
+| GET      | `/health`, `/metrics` | Estado (PostgreSQL y Redis) y métricas  | público |
 
 **Cuentas que no pueden autenticarse:** `/login` responde **403** `ERR_CORREO_NO_VERIFICADO` si el correo no se ha verificado, y `ERR_CUENTA_INACTIVA` si la cuenta está desactivada. Ambos se informan solo después de validar la contraseña, para no revelar el estado de cuentas ajenas.
 
-**Vencimiento de la sesión:** es absoluto (30 minutos por defecto, `SESSION_LIFETIME_MINUTES`). Flask renueva la cookie en cada petición por defecto, lo que haría que la sesión no expirara nunca mientras el cliente consulte `/session`; por eso se desactiva `SESSION_REFRESH_EACH_REQUEST` y la sesión solo se prorroga con `POST /session/extend`. `/login`, `/session` y `/session/extend` devuelven `sesion.segundos_restantes` para que el cliente pueda advertir antes de que expire.
+**Perfil:** `PATCH /profile` modifica solo los campos enviados. Cambiar correo o contraseña exige `password_actual`; un correo nuevo queda sin verificar y se envía otro token. `rol`, `activo` e `id` se rechazan con 400 `ERR_CAMPOS_NO_PERMITIDOS`: un usuario no puede ascenderse a administrador editando su perfil. Un cambio de correo o contraseña **cierra todas las sesiones** del usuario y revoca sus JWT (`sesiones_cerradas: true`).
 
-**Perfil:** `PATCH /profile` modifica solo los campos enviados. Cambiar correo o contraseña exige `password_actual`; un correo nuevo queda sin verificar y se envía otro token. `rol`, `activo` e `id` se rechazan con 400 `ERR_CAMPOS_NO_PERMITIDOS`: un usuario no puede ascenderse a administrador editando su perfil.
+### Sesión, JWT y refresh token (Redis)
 
-**JWT:** además de la cookie, `POST /login` y `POST /session/extend` devuelven un bloque `token`:
+`POST /login` crea la sesión **en el servidor** y devuelve:
 
 ```json
-"token": {"access_token": "eyJhbGciOi...", "token_type": "Bearer", "algoritmo": "HS256", "expires_in": 1800}
+"token": {"access_token": "eyJhbGciOi...", "refresh_token": "…", "token_type": "Bearer", "algoritmo": "HS256", "expires_in": 1200}
 ```
 
-El microservicio de libros exige ese token en sus escrituras como `Authorization: Bearer <access_token>`. Lo firma **solo** este servicio (`auth/jwt_tokens.py`), con `JWT_SECRET` y `JWT_ALGORITHM` (HS256). Libros lo valida con la misma clave, así que ambos `.env` deben tener el mismo valor. El token lleva `sub`, `email`, `rol`, `iss`, `iat` y `exp`, y vence al mismo tiempo que la sesión. Sin `JWT_SECRET` (mínimo 32 bytes) el servicio no arranca. En los logs el token aparece solo como `[JWT PRESENTE eyJhbGciOi…abcd (N caracteres)]`.
+| Pieza | Dónde vive | Vida |
+|---|---|---|
+| JWT de acceso (HS256, `JWT_SECRET_KEY`) | en el cliente | 20 min (`ACCESS_TOKEN_MINUTES`) |
+| Sesión `session:<sid>` | Redis | 60 min, se renueva con cada refresh (`SESSION_TTL_MINUTES`) |
+| Refresh token | cliente; en Redis solo su huella `refresh:<sha256>` | igual que la sesión, **un solo uso** |
 
-**Qué es público:** `/login`, `/register`, `/verify`, `/health` y `/logout` no exigen autenticación: sirven justamente para obtenerla, recuperarla o cerrarla. `/session` es una consulta que siempre responde 200. `/session/extend` y `/profile` siguen protegidos con la cookie de sesión.
+- El JWT lleva `sub`, `user_id`, `email`, `role_id`, `rol`, `sid`, `jti`, `typ`, `iss`, `iat` y `exp`. Lo firma **solo** este servicio; los otros 5 lo validan con la misma clave.
+- **Renovar:** `POST /token/refresh {"refresh_token": …}` consume el refresh con `GETDEL`, emite un JWT y un refresh nuevos y revoca el `jti` anterior. Reusar un refresh responde 401 `ERR_REFRESH_INVALIDO`.
+- **Logout:** revoca el `jti` (`jwt:revoked:<jti>`, TTL = vida restante) y borra la sesión y el refresh. Ese JWT responde 401 `ERR_TOKEN_REVOCADO` en los 6 servicios.
+- **Si Redis no responde**, login, refresh, sesión y logout responden **503**: nunca se emite ni se acepta un token sin poder registrarlo o comprobarlo.
+- Sin `JWT_SECRET_KEY` (mínimo 32 bytes) o sin `REDIS_URL`, el servicio no arranca. En los logs el token aparece solo como `[JWT PRESENTE eyJhbGciOi…abcd (N caracteres)]`.
 
 **Cookie de sesión:** se llama `libreria_login_session` y no `session` (el nombre por defecto de Flask). Las cookies no distinguen puerto: si otro servicio Flask en el mismo host usara el nombre por defecto, ambas cookies se sobrescribirían.
 
@@ -82,7 +93,8 @@ services/login/
 ├── db/
 │   └── database.py             # Persistencia con Psycopg 3 + pool de conexiones
 ├── auth/
-│   ├── jwt_tokens.py           # Emisión del JWT de acceso
+│   ├── jwt_tokens.py           # Emisión del JWT de acceso y del refresh token
+│   ├── sesiones.py             # Sesiones y refresh tokens en Redis
 │   ├── passwords.py            # Hash y verificación bcrypt
 │   └── email_validator.py      # Validación de correo (sintaxis + MX)
 └── api/
@@ -106,11 +118,9 @@ La tabla `usuarios` ya contenía 31 usuarios con hashes generados por dos fuente
 
 El resultado es interoperabilidad real en las dos direcciones: los usuarios que ya existían pueden autenticarse en este microservicio, y los que se registran aquí pueden entrar al monolito. Haber elegido otro algoritmo (pbkdf2, argon2) habría partido el sistema en dos islas de usuarios incompatibles.
 
-### Sesión del lado de Flask
+### Sesión del lado del servidor, en Redis
 
-`/login` crea una sesión mediante la cookie firmada nativa de Flask. El `SECRET_KEY` debe ser **fijo y persistente**: si cambia entre reinicios, todas las sesiones activas quedan invalidadas.
-
-`/logout` limpia la sesión del lado del cliente. Con cookies firmadas no hay estado en el servidor que invalidar; una invalidación real del lado del servidor requeriría `Flask-Session` con backend (Redis/PostgreSQL), que es trabajo futuro documentado.
+La cookie solo lleva un identificador aleatorio (`sid`); los datos de la sesión viven en `session:<sid>` en Redis. Así `/logout` invalida la sesión de verdad (antes, con la cookie firmada de Flask, no había estado en el servidor que borrar) y la sesión caduca sola por TTL, sin tareas de limpieza en PostgreSQL.
 
 ### CORS con credenciales: por qué no se usa `*`
 
@@ -157,7 +167,7 @@ Si el envío falla, **el registro no se cancela**: el usuario queda creado y la 
 
 ## Limitaciones conocidas
 
-- **Sin HTTPS.** El despliegue actual es HTTP plano, por lo que la cookie de sesión no puede llevar la bandera `Secure` (el navegador la descartaría). En un entorno real esto es obligatorio antes de exponer un endpoint de login.
+- **HTTPS por nginx.** El servicio habla HTTP; en la instancia se publica detrás de nginx con certificado autofirmado. Con HTTPS activo, `SESSION_COOKIE_SECURE=true`.
 - **Sin límite de intentos.** No hay *rate limiting* en `/login`, por lo que no está protegido contra fuerza bruta.
 - **Servidor de desarrollo.** Se ejecuta con el servidor integrado de Flask, no con un WSGI de producción (gunicorn/uWSGI).
 
@@ -184,13 +194,14 @@ Agrega `apellido_paterno`, `apellido_materno` y `email_verificado` a `usuarios`,
 ### 3. Configurar y ejecutar
 
 ```bash
-cp .env.example .env     # y rellenar SECRET_KEY, JWT_SECRET y DB_PASSWORD
+cp .env.example .env     # y rellenar JWT_SECRET_KEY, REDIS_URL y DB_PASSWORD
 python3 -m venv venv
-./venv/bin/pip install -r requirements.txt
+./venv/bin/pip install -r requirements.txt     # incluye -e ../common
 ./venv/bin/python app.py
+./venv/bin/python -m pytest -q                 # 13 pruebas (fakeredis)
 ```
 
-Generar un `SECRET_KEY`:
+Generar un `JWT_SECRET_KEY`:
 
 ```bash
 python -c "import secrets; print(secrets.token_hex(32))"

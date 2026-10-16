@@ -1,9 +1,9 @@
 """
 Sesion y perfil del usuario autenticado.
 
-    Ver datos de la sesion    GET  /session
-    Extender la sesion        POST /session/extend
-    Modificar el perfil       PATCH /profile  (solo los campos cambiados)
+    Ver datos de la sesion    GET  /session         (sesion guardada en Redis)
+    Renovar el JWT            POST /token/refresh   (refresh token de un solo uso)
+    Modificar el perfil       PATCH /profile        (solo los campos cambiados)
 """
 import tkinter as tk
 from tkinter import ttk
@@ -25,7 +25,7 @@ class ProfileView(ttk.Frame):
         self.app = app
 
         ttk.Label(self, text='Sesión y perfil', style='Titulo.TLabel').pack(anchor='w')
-        ttk.Label(self, text='GET /session · POST /session/extend · PATCH /profile  (microservicio de login)',
+        ttk.Label(self, text='GET /session · POST /token/refresh · PATCH /profile  (microservicio de login :5000)',
                   style='Suave.TLabel').pack(anchor='w', pady=(0, 10))
 
         cuerpo = ttk.Frame(self)
@@ -37,8 +37,8 @@ class ProfileView(ttk.Frame):
         self.datos = {}
         for fila, (clave, etiqueta) in enumerate((
                 ('nombre_completo', 'Nombre'), ('email', 'Correo'), ('rol', 'Rol'),
-                ('email_verificado', 'Correo verificado'), ('expira', 'La sesión expira en'),
-                ('duracion', 'Duración de la sesión'))):
+                ('email_verificado', 'Correo verificado'), ('expira', 'El JWT expira en'),
+                ('duracion', 'Duración del JWT'))):
             tk.Label(sesion, text=etiqueta, bg=SUP, fg=COLOR['texto_suave'], anchor='w').grid(
                 row=fila, column=0, sticky='w', pady=3, padx=(0, 14))
             valor = tk.Label(sesion, text='', bg=SUP, anchor='w', font=(theme.FUENTE, 10, 'bold'))
@@ -48,7 +48,7 @@ class ProfileView(ttk.Frame):
         botones = tk.Frame(sesion, bg=SUP)
         botones.grid(row=6, column=0, columnspan=2, sticky='w', pady=(14, 0))
         ttk.Button(botones, text='Consultar al servidor', command=self._consultar).pack(side='left')
-        ttk.Button(botones, text='Extender sesión', style='Primario.TButton',
+        ttk.Button(botones, text='Renovar JWT', style='Primario.TButton',
                    command=self._extender).pack(side='left', padx=8)
         self.msg_sesion = Mensaje(sesion, fondo=SUP, ancho=340)
         self.msg_sesion.grid(row=7, column=0, columnspan=2, sticky='w', pady=(10, 0))
@@ -115,15 +115,16 @@ class ProfileView(ttk.Frame):
         self.app.runner.run(self.app.auth.consultar_sesion, al_terminar=listo)
 
     def _extender(self) -> None:
-        self.msg_sesion.mostrar('Solicitando POST /session/extend…')
+        self.msg_sesion.mostrar('Solicitando POST /token/refresh…')
 
         def listo(r):
             if isinstance(r, ApiResult) and r.ok:
                 self._mostrar_usuario()
-                self.msg_sesion.mostrar(f"Sesión extendida (HTTP {r.status}).", 'exito')
+                self.msg_sesion.mostrar(f"JWT renovado con el refresh token (HTTP {r.status}); "
+                                        'el anterior quedó revocado en Redis.', 'exito')
             elif isinstance(r, ApiResult):
                 self.msg_sesion.mostrar(r.mensaje, 'error')
-        self.app.extender_sesion(al_terminar=listo)
+        self.app.renovar_token(al_terminar=listo)
 
     def _guardar(self) -> None:
         actual = self.app.auth.sesion.usuario
@@ -165,6 +166,12 @@ class ProfileView(ttk.Frame):
             return
         for clave in ('password', 'password_confirmacion', 'password_actual'):
             self.perfil[clave].delete(0, 'end')
+        if r.data.get('sesiones_cerradas'):
+            # Cambio de correo o contrasena: el servidor revoco todos los JWT
+            # del usuario y cerro sus sesiones en Redis.
+            self.app.mostrar_login('Perfil actualizado. Por seguridad se cerraron todas tus sesiones '
+                                   '(tokens revocados en Redis): inicia sesión con tus nuevos datos.', 'exito')
+            return
         self._mostrar_usuario()
         texto = f"Perfil actualizado (HTTP {r.status}). Campos: {', '.join(r.data['campos_actualizados'])}."
         if r.data.get('correo_verificacion'):

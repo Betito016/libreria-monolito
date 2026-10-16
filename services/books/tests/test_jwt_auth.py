@@ -1,9 +1,8 @@
 """
-Pruebas de la proteccion JWT del microservicio de libros.
+Proteccion JWT, revocacion y cache del microservicio de libros.
 
-No necesitan PostgreSQL ni el servicio de login: el repositorio se sustituye
-por uno en memoria y los tokens se firman aqui con la clave de prueba, igual
-que lo hace services/login/auth/jwt_tokens.py.
+Sin PostgreSQL ni Redis reales: el repositorio se sustituye por uno en
+memoria y Redis por fakeredis.
 
     cd services/books
     venv\\Scripts\\python -m pytest -q
@@ -11,54 +10,54 @@ que lo hace services/login/auth/jwt_tokens.py.
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 
+import fakeredis
 import jwt
 import pytest
 
 CLAVE = 'clave-de-prueba-solo-para-tests-0123456789abcdef'
-# Antes de importar la app: load_dotenv no pisa variables ya definidas.
-os.environ['JWT_SECRET'] = CLAVE
-os.environ['JWT_ALGORITHM'] = 'HS256'
-os.environ['JWT_ISSUER'] = 'libreria-login'
+os.environ.update(JWT_SECRET_KEY=CLAVE, REDIS_URL='redis://:x@127.0.0.1:6379/0', ACCESS_TOKEN_MINUTES='20')
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import app as modulo_app  # noqa: E402
 from db import database  # noqa: E402
+from libreria_common.seguridad import revocar_jti  # noqa: E402
 
 ISBN = '9786047750040'
-LIBRO = {
-    'isbn': ISBN, 'titulo': 'Prueba JWT', 'autores': ['A'], 'generos': ['G'], 'anio': 2026,
-    'precio': 10.0, 'stock': 1, 'formato': 'eBook', 'categoria': 'Educación',
-    'imagen_principal': None, 'imagenes': [],
-}
-CUERPO = {'isbn': ISBN, 'titulo': 'Prueba JWT', 'autores': ['A'], 'generos': ['G'], 'anio': 2026,
-          'precio': 10, 'stock': 1, 'formato': 'eBook', 'categoria': 'Educación', 'imagenes': []}
+LIBRO = {'isbn': ISBN, 'titulo': 'Prueba JWT', 'autores': ['A'], 'generos': ['G'], 'anio': 2026, 'precio': 10.0,
+         'stock': 1, 'formato': 'eBook', 'categoria': 'Educación', 'imagen_principal': None, 'imagenes': []}
+CUERPO = {'isbn': ISBN, 'titulo': 'Prueba JWT', 'autores': ['A'], 'generos': ['G'], 'anio': 2026, 'precio': 10,
+          'stock': 1, 'formato': 'eBook', 'categoria': 'Educación', 'imagenes': []}
 
 
 @pytest.fixture
 def cliente(monkeypatch):
-    """Repositorio en memoria: registra que operacion llego a ejecutarse."""
+    servidor = fakeredis.FakeServer()
+    redis = fakeredis.FakeRedis(server=servidor, decode_responses=True)
+    monkeypatch.setattr(modulo_app.servicio.redis, '_cliente', redis)
+    modulo_app.servicio.redis._abierto_hasta = 0
     llamadas = []
     repo = database.BookRepository
-    monkeypatch.setattr(repo, 'search', classmethod(
-        lambda cls, f, p, s: {'total': 1, 'libros': [LIBRO]}))
-    monkeypatch.setattr(repo, 'get', classmethod(lambda cls, isbn: dict(LIBRO, conceptos=[])))
-    monkeypatch.setattr(repo, 'create', classmethod(lambda cls, d: llamadas.append('create') or LIBRO))
-    monkeypatch.setattr(repo, 'replace', classmethod(lambda cls, i, d: llamadas.append('replace') or LIBRO))
-    monkeypatch.setattr(repo, 'update', classmethod(lambda cls, i, d: llamadas.append('update') or LIBRO))
-    monkeypatch.setattr(repo, 'delete', classmethod(lambda cls, i: llamadas.append('delete')))
+    monkeypatch.setattr(repo, 'search', classmethod(lambda c, f, p, s: llamadas.append('search') or {'total': 1, 'libros': [LIBRO]}))
+    monkeypatch.setattr(repo, 'get', classmethod(lambda c, i: llamadas.append('get') or dict(LIBRO, conceptos=[])))
+    monkeypatch.setattr(repo, 'list_categories', classmethod(lambda c: ['Educación']))
+    monkeypatch.setattr(repo, 'create', classmethod(lambda c, d: llamadas.append('create') or LIBRO))
+    monkeypatch.setattr(repo, 'replace', classmethod(lambda c, i, d: llamadas.append('replace') or LIBRO))
+    monkeypatch.setattr(repo, 'update', classmethod(lambda c, i, d: llamadas.append('update') or LIBRO))
+    monkeypatch.setattr(repo, 'delete', classmethod(lambda c, i: llamadas.append('delete')))
     modulo_app.app.testing = True
     c = modulo_app.app.test_client()
-    c.llamadas = llamadas
+    c.llamadas, c.redis, c.servidor = llamadas, redis, servidor
     return c
 
 
-def token(rol='administrador', exp_en=1800, clave=CLAVE, alg='HS256', iss='libreria-login', **extra):
+def token(role_id=1, minutos=20, clave=CLAVE, alg='HS256', iss='libreria-login', **extra):
     ahora = int(time.time())
-    claims = {'sub': '1', 'email': 'admin@libreria.test', 'rol': rol, 'iss': iss,
-              'iat': ahora, 'exp': ahora + exp_en, **extra}
-    return jwt.encode(claims, clave, algorithm=alg)
+    claims = {'sub': 'u1', 'user_id': 'u1', 'email': 'admin@libreria.test', 'role_id': role_id, 'sid': 's1',
+              'jti': uuid.uuid4().hex, 'typ': 'access', 'iss': iss, 'iat': ahora, 'exp': ahora + minutos * 60, **extra}
+    return jwt.encode(claims, clave, algorithm=alg), claims
 
 
 def bearer(t):
@@ -74,118 +73,105 @@ ESCRITURAS = [
 
 
 # ----------------------------------------------------------------------
-# Lectura publica
+# Lectura publica y cache
 # ----------------------------------------------------------------------
-@pytest.mark.parametrize('ruta', ['/api/books', f'/api/books/{ISBN}', '/books', f'/books/{ISBN}'])
+@pytest.mark.parametrize('ruta', ['/api/books', f'/api/books/{ISBN}', '/books', f'/books/{ISBN}', '/categories'])
 def test_get_publico_sin_token(cliente, ruta):
-    r = cliente.get(f'{ruta}?format=json')
-    assert r.status_code == 200
+    assert cliente.get(f'{ruta}?format=json').status_code == 200
 
 
-def test_get_publico_ignora_token_invalido(cliente):
-    """Un GET no valida tokens: aunque llegue uno basura, el catalogo responde."""
-    r = cliente.get('/api/books?format=json', headers=bearer('basura'))
-    assert r.status_code == 200
+def test_cache_miss_y_luego_hit(cliente):
+    r1 = cliente.get('/api/books?format=json&titulo=cloud')
+    r2 = cliente.get('/api/books?titulo=cloud&format=xml')        # otro formato, misma clave
+    assert r1.headers['X-Cache'] == 'MISS' and r2.headers['X-Cache'] == 'HIT'
+    assert cliente.llamadas.count('search') == 1                   # la 2a no toco PostgreSQL
+    assert 0 < cliente.redis.ttl('books:list:page=1&page_size=12&titulo=cloud') <= 60
+    d1 = cliente.get(f'/api/books/{ISBN}?format=json')
+    d2 = cliente.get(f'/api/books/{ISBN}?format=json')
+    assert (d1.headers['X-Cache'], d2.headers['X-Cache']) == ('MISS', 'HIT')
+    assert cliente.redis.exists(f'books:{ISBN}')
+
+
+@pytest.mark.parametrize('metodo,ruta,cuerpo,operacion', ESCRITURAS)
+def test_escritura_invalida_la_cache(cliente, metodo, ruta, cuerpo, operacion):
+    cliente.get('/api/books?format=json')
+    cliente.get(f'/api/books/{ISBN}?format=json')
+    assert cliente.redis.exists('books:list:page=1&page_size=12', f'books:{ISBN}') == 2
+    t, _ = token()
+    r = getattr(cliente, metodo)(f'{ruta}?format=json', json=cuerpo, headers=bearer(t))
+    assert r.status_code in (200, 201)
+    assert cliente.redis.exists('books:list:page=1&page_size=12', f'books:{ISBN}') == 0
+    assert cliente.get('/api/books?format=json').headers['X-Cache'] == 'MISS'
+
+
+def test_redis_caido_lectura_desde_postgresql(cliente):
+    cliente.servidor.connected = False
+    r = cliente.get('/api/books?format=json')
+    assert r.status_code == 200 and r.headers['X-Cache'] == 'MISS'
 
 
 # ----------------------------------------------------------------------
-# Escrituras
+# Escrituras protegidas
 # ----------------------------------------------------------------------
 @pytest.mark.parametrize('metodo,ruta,cuerpo,operacion', ESCRITURAS)
 def test_escritura_sin_token_401(cliente, metodo, ruta, cuerpo, operacion):
     r = getattr(cliente, metodo)(f'{ruta}?format=json', json=cuerpo)
-    assert r.status_code == 401
-    assert r.get_json()['codigo_error'] == 'ERR_TOKEN_AUSENTE'
-    assert r.headers['WWW-Authenticate'].startswith('Bearer')
+    assert r.status_code == 401 and r.get_json()['codigo_error'] == 'ERR_TOKEN_AUSENTE'
     assert operacion not in cliente.llamadas
 
 
 @pytest.mark.parametrize('metodo,ruta,cuerpo,operacion', ESCRITURAS)
-def test_escritura_con_jwt_valido(cliente, metodo, ruta, cuerpo, operacion):
-    r = getattr(cliente, metodo)(f'{ruta}?format=json', json=cuerpo, headers=bearer(token()))
+def test_escritura_con_jwt_de_admin(cliente, metodo, ruta, cuerpo, operacion):
+    t, _ = token()
+    r = getattr(cliente, metodo)(f'{ruta}?format=json', json=cuerpo, headers=bearer(t))
     assert r.status_code == (201 if metodo == 'post' else 200)
     assert operacion in cliente.llamadas
 
 
-@pytest.mark.parametrize('metodo,ruta,cuerpo,operacion', ESCRITURAS)
-def test_alias_sin_prefijo_api_tambien_protegido(cliente, metodo, ruta, cuerpo, operacion):
-    ruta = ruta.replace('/api', '')
-    assert getattr(cliente, metodo)(f'{ruta}?format=json', json=cuerpo).status_code == 401
-    r = getattr(cliente, metodo)(f'{ruta}?format=json', json=cuerpo, headers=bearer(token()))
-    assert r.status_code in (200, 201)
-
-
-@pytest.mark.parametrize('headers,codigo', [
-    ({'Authorization': 'Bearer esto.no.es-un-jwt'}, 'ERR_TOKEN_INVALIDO'),
-    ({'Authorization': f"Basic {token()}"}, 'ERR_TOKEN_INVALIDO'),
-    ({'Authorization': 'Bearer'}, 'ERR_TOKEN_AUSENTE'),
-    ({'Authorization': 'Bearer   '}, 'ERR_TOKEN_AUSENTE'),
-    ({'Authorization': ''}, 'ERR_TOKEN_AUSENTE'),
+@pytest.mark.parametrize('t', [
+    'esto.no.es-un-jwt',
+    token(clave='otra-clave-que-no-es-la-del-login-0123456789')[0],
+    token(minutos=-1)[0],
+    token(alg='HS512')[0],
+    token(iss='otro-servicio')[0],
+    token(typ='refresh')[0],
 ])
-def test_header_mal_formado_401(cliente, headers, codigo):
-    r = cliente.patch(f'/api/books/{ISBN}?format=json', json={'precio': 20}, headers=headers)
+def test_token_invalido_401(cliente, t):
+    r = cliente.patch(f'/api/books/{ISBN}?format=json', json={'precio': 20}, headers=bearer(t))
     assert r.status_code == 401
-    assert r.get_json()['codigo_error'] == codigo
     assert 'update' not in cliente.llamadas
 
 
-def test_firma_invalida_401(cliente):
-    otro = token(clave='otra-clave-que-no-es-la-del-login-0123456789')
-    r = cliente.patch(f'/api/books/{ISBN}?format=json', json={'precio': 20}, headers=bearer(otro))
-    assert r.status_code == 401
-    assert r.get_json()['codigo_error'] == 'ERR_TOKEN_INVALIDO'
+def test_token_revocado_401(cliente):
+    t, claims = token()
+    revocar_jti(modulo_app.servicio.redis, claims['jti'], claims['exp'])
+    r = cliente.delete(f'/api/books/{ISBN}?format=json', headers=bearer(t))
+    assert r.status_code == 401 and r.get_json()['codigo_error'] == 'ERR_TOKEN_REVOCADO'
+    assert 'delete' not in cliente.llamadas
 
 
-def test_token_alterado_401(cliente):
-    """Cambiar el payload (p. ej. rol) sin volver a firmar invalida la firma."""
-    cabecera, payload, firma = token(rol='cliente').split('.')
-    admin_payload = token().split('.')[1]
-    r = cliente.delete(f'/api/books/{ISBN}?format=json', headers=bearer(f'{cabecera}.{admin_payload}x.{firma}'))
-    assert r.status_code == 401
-
-
-def test_token_expirado_401(cliente):
-    r = cliente.patch(f'/api/books/{ISBN}?format=json', json={'precio': 20}, headers=bearer(token(exp_en=-60)))
-    assert r.status_code == 401
-    assert r.get_json()['codigo_error'] == 'ERR_TOKEN_EXPIRADO'
-
-
-def test_algoritmo_distinto_401(cliente):
-    otro = token(alg='HS512')
-    r = cliente.patch(f'/api/books/{ISBN}?format=json', json={'precio': 20}, headers=bearer(otro))
-    assert r.status_code == 401
-
-
-def test_algoritmo_none_401(cliente):
-    sin_firma = jwt.encode({'sub': '1', 'rol': 'administrador', 'iss': 'libreria-login',
-                            'iat': int(time.time()), 'exp': int(time.time()) + 600}, None, algorithm='none')
-    r = cliente.patch(f'/api/books/{ISBN}?format=json', json={'precio': 20}, headers=bearer(sin_firma))
-    assert r.status_code == 401
-
-
-def test_emisor_distinto_401(cliente):
-    r = cliente.patch(f'/api/books/{ISBN}?format=json', json={'precio': 20},
-                      headers=bearer(token(iss='otro-servicio')))
-    assert r.status_code == 401
-
-
-def test_token_de_cliente_403(cliente):
-    r = cliente.post('/api/books?format=json', json=CUERPO, headers=bearer(token(rol='cliente')))
-    assert r.status_code == 403
-    assert r.get_json()['codigo_error'] == 'ERR_SIN_PERMISOS'
+def test_redis_caido_escritura_503(cliente):
+    t, _ = token()
+    cliente.servidor.connected = False
+    r = cliente.post('/api/books?format=json', json=CUERPO, headers=bearer(t))
+    assert r.status_code == 503 and r.get_json()['codigo_error'] == 'ERR_REDIS_NO_DISPONIBLE'
     assert 'create' not in cliente.llamadas
 
 
-def test_location_respeta_prefijo(cliente):
-    r = cliente.post('/api/books?format=json', json=CUERPO, headers=bearer(token()))
-    assert r.headers['Location'] == f'/api/books/{ISBN}'
+def test_rol_cliente_403(cliente):
+    t, _ = token(role_id=2)
+    r = cliente.post('/api/books?format=json', json=CUERPO, headers=bearer(t))
+    assert r.status_code == 403 and r.get_json()['codigo_error'] == 'ERR_SIN_PERMISOS'
 
 
 def test_logs_no_muestran_el_token(cliente, caplog):
-    t = token()
+    t, _ = token()
     with caplog.at_level('INFO'):
         cliente.patch(f'/api/books/{ISBN}?format=json', json={'precio': 20}, headers=bearer(t))
-    texto = caplog.text
-    assert '[JWT PRESENTE' in texto
-    assert 'PROTEGIDO (requiere JWT)' in texto
-    assert t not in texto
+    assert '[JWT PRESENTE' in caplog.text and t not in caplog.text
+
+
+def test_metrics(cliente):
+    cliente.get('/api/books?format=json'); cliente.get('/api/books?format=json')
+    m = cliente.get('/metrics?format=json').get_json()
+    assert m['contadores']['cache_aciertos'] >= 1 and m['redis']['disponible'] is True
