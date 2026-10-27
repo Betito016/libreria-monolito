@@ -111,7 +111,24 @@ Las 401 incluyen `WWW-Authenticate: Bearer error="invalid_token", error_descript
 - **CORS** solo para `CORS_ORIGINS`; un origen ajeno no recibe `Access-Control-Allow-Origin`.
 - **Logs** sin tokens ni contraseñas: `[JWT PRESENTE eyJhbGciOi…abcd (513 caracteres)]`, contraseñas como `••••••`.
 - **Mínimo privilegio en PostgreSQL:** cada servicio tiene su propio rol (`login_app_user`, `books_app_user`, `users_app_user`, `authors_app_user`, `orders_app_user`, `payments_app_user`) con permisos solo sobre sus tablas.
-- **HTTPS** en la instancia: nginx con certificado autofirmado delante de los 6 servicios. La app ya lo soporta (*Configuración → Certificado HTTPS (CA)*; un certificado que no coincide se reporta como `TLS_INVALIDO`). El despliegue en la instancia está pendiente; las evidencias de esta entrega se tomaron en local.
+- **HTTPS** en la instancia: nginx con certificado firmado por una CA propia (autofirmada) delante de los 6 servicios. La app lo usa con *Configuración → Certificado HTTPS (CA)*; un certificado que no coincide se reporta como `TLS_INVALIDO`.
+
+## 8. Despliegue en la instancia GCP (34.135.84.31)
+
+| Servicio | systemd (usuario) | HTTP | HTTPS (nginx) |
+|---|---|---|---|
+| login | `library-login` (`loginapp`) | 5000 | 8440 |
+| books | `library-books` (`booksapp`) | 5001 | 8441 |
+| pagos | `library-pagos` (`pagosapp`) | 5002 | 8442 |
+| pedidos | `library-pedidos` (`pedidosapp`) | 5003 | 8443 |
+| users | `library-users` (`usersapp`) | 5004 | 8444 |
+| authors | `library-authors` (`authorsapp`) | 5005 | 8445 |
+| soap | `library-soap` (`soapapp`) | 5006 | — |
+
+- Código en `/opt/udem/integracion02/library/services/<servicio>` (cada uno con su venv y su `.env` con permisos 600); `common` instalado en cada venv.
+- nginx: `/etc/nginx/conf.d/libreria-https.conf`; certificados en `/etc/nginx/ssl/` (`libreria-ca.crt` es el que se copia a los clientes; SAN `IP:34.135.84.31`). SELinux: puertos 8440–8445 agregados a `http_port_t`.
+- Redis escucha solo en `127.0.0.1` de la instancia, con `requirepass`.
+- Firewall de la instancia (`firewalld`): 5000–5006 y 8440–8445 abiertos.
 
 ## 6. Variables de entorno comunes
 

@@ -10,28 +10,27 @@ Nota para retomar el trabajo desde otra computadora (el chat original no es acce
 - Entrega preparada **fuera del repo** en la laptop: `C:\integracion\entrega\604775_Entrega_Redis.zip` (PDF de evidencias, reflexión, capturas, evidencia API). Las evidencias se tomaron en **local** con el Redis de la instancia por túnel.
 - La animación para ubiquitous se hace en otro chat (no tocar aquí).
 
+### Desplegado en la instancia GCP (2026-10-27)
+
+- Clon de la instancia actualizado con un *git bundle* (el repo es privado; la instancia no tiene credenciales de GitHub).
+- Los 6 servicios + SOAP corriendo con systemd; puertos, usuarios, rutas y nginx en [REDIS_MICROSERVICIOS.md § 8](REDIS_MICROSERVICIOS.md#8-despliegue-en-la-instancia-gcp-3413584131).
+- Roles de BD nuevos (`users_app_user`, `authors_app_user`, `orders_app_user`, `payments_app_user`) con contraseña aleatoria y migraciones aplicadas. `pg_hba.conf` quedó como estaba (md5).
+- SOAP movido al 5006 (y la app Electron apunta ahí).
+- HTTPS por nginx en 8440–8445 con CA propia; el certificado público de la CA se copió a la laptop en `%USERPROFILE%\.libreria_secretos\libreria-ca.crt`.
+- Verificado por túnel SSH: evidencias API 26/26 por HTTPS y la app de escritorio completa contra la instancia.
+
 ## Pendiente
 
-### Paso 8 — Despliegue en la instancia GCP (`integracion`, zona `us-central1-c`)
-
-El repo es privado: la instancia se actualiza con un *git bundle* (no puede hacer `git pull` de GitHub).
-
-1. **Código:** actualizar el clon de la instancia con un bundle y copiar/actualizar los servicios en su carpeta de despliegue (login y books ya existen como `library-login` / `library-books`).
-2. **Variables:** en el `.env` de login y books renombrar `JWT_SECRET` → `JWT_SECRET_KEY` (mismo valor) y agregar `REDIS_URL=redis://:<requirepass>@127.0.0.1:6379/0`, `ACCESS_TOKEN_MINUTES=20`, `CORS_ORIGINS`. Quitar `SECRET_KEY` y `SESSION_LIFETIME_MINUTES` de login. Los 6 `.env` con la **misma** `JWT_SECRET_KEY`. Los secretos se generan en el servidor y no se imprimen.
-3. **Base de datos:** crear los roles `users_app_user`, `authors_app_user`, `orders_app_user`, `payments_app_user` con contraseña aleatoria y aplicar:
-   - `library_db`: `db/10_roles.sql`, `db/11_users_service.sql`
-   - `libreria_db`: `services/authors/sql/01_autores.sql`, `services/pedidos/sql/01_pedidos.sql`, `services/pagos/sql/01_pagos.sql`
-   (El procedimiento con superusuario/`pg_hba` en la instancia requiere autorización explícita cada vez.)
-4. **venvs:** en cada servicio `pip install -r requirements.txt` (instala `-e ../common`).
-5. **systemd:** unidades nuevas `library-users` (5004), `library-authors` (5005), `library-pedidos` (5003), `library-pagos` (5002), con su usuario de sistema, igual que `library-login` / `library-books`. Reiniciar login y books.
-6. **SOAP 5002 → 5006:** mover el servicio SOAP al 5006 (su unidad y su `.env`) y actualizar la app Electron (`apps/electron-catalog/src/models/ConfigModel.js`) y sus docs.
-7. **Firewall:** abrir los puertos nuevos en el firewall de GCP y en `firewalld` (o solo 443 si todo va por nginx).
-8. **HTTPS:** nginx con certificado autofirmado delante de los 6 servicios; copiar el certificado de la CA a la laptop y ponerlo en la app (*Configuración → Certificado HTTPS (CA)*). Con HTTPS, `SESSION_COOKIE_SECURE=true` en login.
-9. Probar con la app contra la instancia (Configuración → Probar conexión de las 6 URLs).
+- **Firewall de GCP:** solo están abiertos desde fuera 5000, 5001, 5002 y 80. Para usar desde Internet los servicios nuevos y el HTTPS hay que crear la regla (el asistente no tiene permiso para hacerlo):
+  ```bash
+  gcloud compute firewall-rules create allow-libreria-microservicios --network=default --direction=INGRESS --action=ALLOW --rules=tcp:5003-5006,tcp:8440-8445 --source-ranges=0.0.0.0/0
+  ```
+  Mientras tanto se puede llegar a todo por túnel SSH (`-L 8440:127.0.0.1:8440` … `-L 8445:127.0.0.1:8445`).
+- **Opcional, endurecer:** cuando todo se use por HTTPS, cerrar el HTTP directo (5000–5005) en firewalld/GCP y poner `SESSION_COOKIE_SECURE=true` en login.
+- **App contra la instancia:** en *Configuración*, URLs `https://34.135.84.31:8440` … `:8445` y el certificado `libreria-ca.crt` (requiere la regla de firewall de arriba).
 
 ### Otros
 
-- Revisar si en la instancia quedó el libro de prueba ISBN `9786047750057` de la actividad JWT y borrarlo.
 - En la base **local** de la laptop se borró por error el autor id 16 (no era de la semilla: probablemente el autor huérfano de un libro de prueba de la actividad JWT). Los 15 autores semilla están completos.
 
 ## Trabajar en local desde otra PC
