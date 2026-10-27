@@ -6,7 +6,7 @@ class ConfigModel {
   static STORAGE_KEY = 'catalogo-libros-config';
 
   static DEFAULTS = {
-    baseUrl: 'http://34.135.84.31:5002',
+    baseUrl: 'http://34.135.84.31:5006',
     endpoint: '/books',
     pageSize: 12
   };

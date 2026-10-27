@@ -15,7 +15,7 @@ La IP `34.51.99.221` del prompt es la de la instancia del profesor (a modo de ej
 **Endpoint real de nuestro microservicio:**
 
 ```
-http://34.135.84.31:5002/books
+http://34.135.84.31:5006/books
 ```
 
 Esta dirección está **reservada como IP estática** en GCP (`integracion-ip`, región `us-central1`), así que ya no cambia al reiniciar la instancia. Antes era efímera y rotó tres veces, dejando enlaces muertos en la app y en la documentación.
