@@ -260,3 +260,14 @@ def test_metrics_y_cors(servicio):
     assert r.headers['Access-Control-Allow-Origin'] == 'http://cliente.permitido'
     r = servicio.cliente.get('/publico', headers={'Origin': 'http://malicioso.example'})
     assert 'Access-Control-Allow-Origin' not in r.headers
+
+
+def test_metrics_en_xml_bien_formado(servicio):
+    """/metrics tiene claves como '200' o 'GET /publico': en XML deben ir como
+    <item clave="...">, no como etiquetas (eso dejaba el XML mal formado)."""
+    import xml.etree.ElementTree as ET
+    servicio.cliente.get('/publico?format=json')
+    r = servicio.cliente.get('/metrics')                     # XML por defecto
+    raiz = ET.fromstring(r.data)                            # lanza ParseError si esta mal formado
+    claves = {n.get('clave') for n in raiz.iter('item')}
+    assert '200' in claves and any(c and c.startswith('GET ') for c in claves)

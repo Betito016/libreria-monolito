@@ -2,6 +2,7 @@
 Respuestas bilingues: XML por defecto, JSON con ?format=json. Mismo criterio
 que login y books, para los servicios nuevos (users, authors, pedidos, pagos).
 """
+import re
 import xml.etree.ElementTree as ET
 from typing import Any, Dict
 
@@ -28,21 +29,33 @@ def _texto_xml(valor: Any) -> str:
     return str(valor)
 
 
+_NOMBRE_XML = re.compile(r'^[A-Za-z_][A-Za-z0-9_.-]*$')
+
+
+def _nodo(padre: ET.Element, clave: Any) -> ET.Element:
+    """Las claves que no son nombres XML validos (p. ej. '200' o 'GET /api/books/<isbn>'
+    en /metrics) van como <item clave="...">: si no, el XML quedaria mal formado."""
+    clave = str(clave)
+    if _NOMBRE_XML.match(clave) and not clave.lower().startswith('xml'):
+        return ET.SubElement(padre, clave)
+    return ET.SubElement(padre, 'item', {'clave': clave})
+
+
 def _agregar(padre: ET.Element, datos: Dict[str, Any]) -> None:
     for clave, valor in datos.items():
         if isinstance(valor, list):
             etiqueta = _PLURAL_A_SINGULAR.get(clave) or (clave[:-1] if clave.endswith('s') and len(clave) > 1 else 'item')
-            contenedor = ET.SubElement(padre, clave)
+            contenedor = _nodo(padre, clave)
             for item in valor:
-                nodo = ET.SubElement(contenedor, etiqueta)
+                nodo = ET.SubElement(contenedor, etiqueta if _NOMBRE_XML.match(etiqueta) else 'item')
                 if isinstance(item, dict):
                     _agregar(nodo, item)
                 else:
                     nodo.text = _texto_xml(item)
         elif isinstance(valor, dict):
-            _agregar(ET.SubElement(padre, clave), valor)
+            _agregar(_nodo(padre, clave), valor)
         else:
-            ET.SubElement(padre, clave).text = _texto_xml(valor)
+            _nodo(padre, clave).text = _texto_xml(valor)
 
 
 def api_response(raiz: str, datos: Dict[str, Any], status: int = 200, headers=None) -> Response:
