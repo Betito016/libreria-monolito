@@ -1,0 +1,6 @@
+﻿Latencia base sin carga (codigo HTTP, segundos) 2026-11-03T15:24:29 -> http://34.135.84.31:5001/health?format=json
+200 0.753231
+200 0.469644
+200 0.545394
+200 0.206562
+200 0.467056
