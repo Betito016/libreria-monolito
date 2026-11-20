@@ -53,7 +53,7 @@ Se abrirá una ventana de escritorio con el catálogo de libros.
 Por defecto la aplicación apunta a:
 
 ```
-URL base:  http://34.135.84.31:5006
+URL base:  http://34.135.84.31/api/soap   (Library API Gateway; también http://34.135.84.31:8080/api/soap)
 Endpoint:  /books
 ```
 

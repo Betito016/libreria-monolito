@@ -12,6 +12,7 @@ contiene credenciales: solo direcciones y tiempos.
 """
 import json
 import os
+import re
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import List
@@ -28,6 +29,17 @@ SERVICIOS = (
     ('pagos', 'Pagos', 5002),
 )
 NOMBRE_SERVICIO = {clave: nombre for clave, nombre, _ in SERVICIOS}
+
+# Library API Gateway: único punto de entrada. Cada servicio vive bajo su prefijo
+# (http://<gateway>/api/<prefijo>/...); los puertos de arriba solo existen DENTRO de
+# la instancia (127.0.0.1) y ya no son accesibles desde fuera.
+GATEWAY = 'http://34.135.84.31'
+PREFIJO_GATEWAY = {'login': 'login', 'books': 'books', 'users': 'users', 'authors': 'autores',
+                   'pedidos': 'pedidos', 'pagos': 'pagos'}
+
+
+def url_gateway(servicio: str, gateway: str = GATEWAY) -> str:
+    return f'{gateway.rstrip("/")}/api/{PREFIJO_GATEWAY[servicio]}'
 
 
 def directorio_datos() -> Path:
@@ -53,6 +65,9 @@ def normalizar_url(url: str) -> str:
     return url.rstrip('/')
 
 
+RUTA_GATEWAY = re.compile(r'/api/[a-z][a-z0-9_-]*')
+
+
 def validar_url(url: str, nombre: str) -> List[str]:
     """Errores de formato de una URL base (lista vacia si es valida)."""
     partes = urlparse(url)
@@ -65,21 +80,27 @@ def validar_url(url: str, nombre: str) -> List[str]:
         partes.port  # lanza ValueError si el puerto no es numerico o esta fuera de rango
     except ValueError:
         errores.append(f"{nombre}: el puerto no es válido")
-    if partes.path not in ('', '/'):
-        errores.append(f"{nombre}: escribe solo la dirección base, sin rutas como /books")
+    # Se acepta la dirección base sola (http://ip:5001) o el prefijo del API Gateway
+    # (http://ip:8080/api/books): la app arma el resto de cada ruta. Cualquier otra
+    # ruta (p. ej. .../books) suele ser un error de captura y se rechaza.
+    if partes.path not in ('', '/') and not RUTA_GATEWAY.fullmatch(partes.path.rstrip('/')):
+        errores.append(f"{nombre}: escribe la dirección base (http://ip:5001) o la del gateway "
+                       f"(http://ip:8080/api/<servicio>), sin rutas como /books")
     return errores
 
 
 @dataclass
 class AppConfig:
-    # 127.0.0.1 y no 'localhost': en Windows 'localhost' resuelve primero a ::1
-    # (IPv6); Flask escucha solo en IPv4 y cada conexion espera ~2 s el reintento.
-    login_url: str = 'http://127.0.0.1:5000'
-    books_url: str = 'http://127.0.0.1:5001'
-    users_url: str = 'http://127.0.0.1:5004'
-    authors_url: str = 'http://127.0.0.1:5005'
-    pedidos_url: str = 'http://127.0.0.1:5003'
-    pagos_url: str = 'http://127.0.0.1:5002'
+    # Por defecto, todo a través del API Gateway de la instancia. Para trabajar con
+    # servicios locales se cambian en Configuración (p. ej. http://127.0.0.1:5001;
+    # 127.0.0.1 y no 'localhost': en Windows 'localhost' resuelve primero a ::1 y
+    # cada conexion espera ~2 s el reintento).
+    login_url: str = url_gateway('login')
+    books_url: str = url_gateway('books')
+    users_url: str = url_gateway('users')
+    authors_url: str = url_gateway('authors')
+    pedidos_url: str = url_gateway('pedidos')
+    pagos_url: str = url_gateway('pagos')
     timeout_segundos: float = 5.0
     intervalo_salud_segundos: int = 15
     # El JWT dura 20 minutos: la app lo renueva sola cuando le quedan estos segundos.

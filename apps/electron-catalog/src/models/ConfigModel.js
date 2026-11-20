@@ -6,7 +6,8 @@ class ConfigModel {
   static STORAGE_KEY = 'catalogo-libros-config';
 
   static DEFAULTS = {
-    baseUrl: 'http://34.135.84.31:5006',
+    // Library API Gateway: único punto de entrada; /api/soap lleva al servicio SOAP/REST (:5006).
+    baseUrl: 'http://34.135.84.31/api/soap',
     endpoint: '/books',
     pageSize: 12
   };

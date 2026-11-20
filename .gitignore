@@ -6,3 +6,7 @@ venv/
 *.db
 *.egg-info/
 .pytest_cache/
+
+# App Java: salida de compilación
+apps/java-desktop/build/
+apps/java-desktop/*.jar

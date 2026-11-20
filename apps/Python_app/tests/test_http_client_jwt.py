@@ -41,11 +41,35 @@ def api(monkeypatch):
     return cliente
 
 
+@pytest.mark.parametrize('url,valida', [
+    ('http://34.135.84.31:5001', True),
+    ('http://34.135.84.31:8080/api/books', True),          # prefijo del API Gateway
+    ('http://34.135.84.31:8080/api/autores/', True),
+    ('http://34.135.84.31:5001/books', False),             # ruta de un endpoint: error de captura
+    ('http://34.135.84.31:8080/api/books/books', False),
+])
+def test_urls_directas_y_del_gateway(url, valida):
+    from libreria_app.config.settings import validar_url
+    assert (validar_url(url, 'Libros') == []) is valida
+
+
+def test_url_del_gateway_se_une_con_la_ruta_del_servicio():
+    """Base del gateway + ruta del servicio: /api/books + /api/books/123 -> el gateway
+    quita el prefijo /api/books y el servicio recibe /api/books/123, la ruta que ya conoce."""
+    config = AppConfig(books_url='http://34.135.84.31:8080/api/books')
+    cliente = ApiClient(lambda: config)
+    assert cliente.construir_url('books', '/api/books/123').startswith(
+        'http://34.135.84.31:8080/api/books/api/books/123?')
+
+
 def test_configuracion_tiene_los_seis_servicios():
     config = AppConfig()
     assert [s for s, _, _ in SERVICIOS] == ['login', 'books', 'users', 'authors', 'pedidos', 'pagos']
-    for servicio, _, puerto in SERVICIOS:
-        assert config.url(servicio).endswith(f':{puerto}')
+    # Por defecto todo va al API Gateway (un solo punto de entrada, sin puertos).
+    esperadas = {'login': 'login', 'books': 'books', 'users': 'users', 'authors': 'autores',
+                 'pedidos': 'pedidos', 'pagos': 'pagos'}
+    for servicio, prefijo in esperadas.items():
+        assert config.url(servicio) == f'http://34.135.84.31/api/{prefijo}'
     assert config.validar() == []
 
 

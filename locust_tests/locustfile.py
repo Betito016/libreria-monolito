@@ -100,6 +100,11 @@ TIMEOUT_S = 30                        # si una petición tarda más de 30 s se c
 # Puertos de cada sistema en la instancia GCP (la IP llega por --host).
 PUERTO_MONOLITO = 3000
 PUERTOS = {'login': 5000, 'books': 5001, 'pagos': 5002, 'pedidos': 5003, 'users': 5004, 'authors': 5005}
+# Library API Gateway (práctica siguiente): con LOCUST_VIA=gateway los microservicios se
+# llaman por http://IP:8080/api/<prefijo>/... en lugar de su puerto directo.
+VIA_GATEWAY = os.environ.get('LOCUST_VIA', 'directo').strip().lower() == 'gateway'
+PUERTO_GATEWAY = 8080
+PREFIJO_GATEWAY = {5000: 'login', 5001: 'books', 5002: 'pagos', 5003: 'pedidos', 5004: 'users', 5005: 'autores'}
 # Palabras para las búsquedas por título (las mismas en ambos sistemas).
 BUSQUEDAS = ['cloud', 'data', 'the', 'python', 'security', 'arquitectura']
 # Carpeta donde se guardan las evidencias (aquí se escribe el resultado del punto de quiebre).
@@ -231,8 +236,14 @@ class _Base(HttpUser):
 
     def _url(self, puerto: int, ruta: str) -> str:
         """Arma la URL completa: IP de --host + puerto del sistema + ruta.
-        Ej.: _url(5001, '/api/books') -> http://34.135.84.31:5001/api/books"""
+        Ej.: _url(5001, '/api/books') -> http://34.135.84.31:5001/api/books
+
+        Con LOCUST_VIA=gateway las peticiones a los microservicios pasan por el Library
+        API Gateway: http://IP:8080/api/<servicio> + la misma ruta. El escenario y los
+        nombres en las estadísticas no cambian, así se compara directo contra gateway."""
         p = urlsplit(self.host)
+        if VIA_GATEWAY and puerto in PREFIJO_GATEWAY:
+            return f'{p.scheme}://{p.hostname}:{PUERTO_GATEWAY}/api/{PREFIJO_GATEWAY[puerto]}{ruta}'
         return f'{p.scheme}://{p.hostname}:{puerto}{ruta}'
 
     @staticmethod

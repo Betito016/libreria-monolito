@@ -9,7 +9,7 @@ from tkinter import ttk
 from typing import Callable, Optional
 
 from libreria_app.api.http_client import ApiClient
-from libreria_app.config.settings import RUTA_CONFIG, SERVICIOS, AppConfig
+from libreria_app.config.settings import PREFIJO_GATEWAY, RUTA_CONFIG, SERVICIOS, AppConfig
 from libreria_app.gui.theme import COLOR, TEXTO_NIVEL
 from libreria_app.gui.widgets import Mensaje, Semaforo
 from libreria_app.services import health_service
@@ -17,7 +17,7 @@ from libreria_app.services.session_store import SessionStore
 
 SUP = COLOR['superficie']
 
-CAMPOS = tuple((f'{clave}_url', f'URL de {nombre.lower()}', f'ej. http://127.0.0.1:{puerto}')
+CAMPOS = tuple((f'{clave}_url', f'URL de {nombre.lower()}', f'gateway: …/api/{PREFIJO_GATEWAY[clave]} · local: :{puerto}')
                for clave, nombre, puerto in SERVICIOS) + (
     ('timeout_segundos', 'Tiempo máximo de espera (s)', '1 a 60'),
     ('intervalo_salud_segundos', 'Comprobar estado cada (s)', '5 a 3600'),
