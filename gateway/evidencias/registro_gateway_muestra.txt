@@ -1,0 +1,20 @@
+﻿== linea de la peticion con X-Request-ID demo-clase-0001
+2026-11-17T21:22:10+00:00 demo-clase-0001 GET /api/autores/authors -> autores instancia=127.0.0.1:5005 status=200 total=0.011s servicio=0.011s ip=189.159.107.64
+
+== ultimas 12 lineas del registro
+2026-11-17T21:22:09+00:00 2ec1f77586c5ef13f0b627b65c509cbf GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 e6ee1b4c4d56e385ece9ea8d3504863b GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 444a893ff1d063ad49427e40362a7575 GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 cd9566a26356e91e80dba6bc4925d74e GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 464278dbcba241df1d3fe42a4b03876e GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 d475281cfb154284099b8dcbc545d032 GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 5102d0f2124b3317376acd8e88ca0d42 GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 e3e8664007d3cbed4bbc3a9b30e2fe0a GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 a3f27e44a170cf82ae62699cd38fd53a GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 319373b10ec28eeac5a5dbd5b9029d02 GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:09+00:00 66499141f554414646bb5557163451d7 GET /api/books/books -> books instancia=- status=429 total=0.000s servicio=-s ip=189.159.107.64
+2026-11-17T21:22:10+00:00 demo-clase-0001 GET /api/autores/authors -> autores instancia=127.0.0.1:5005 status=200 total=0.011s servicio=0.011s ip=189.159.107.64
+
+== conteo por codigo
+     68 status=429
+     53 status=200

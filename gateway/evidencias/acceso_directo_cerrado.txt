@@ -1,0 +1,15 @@
+﻿Acceso desde fuera (laptop) despues de cerrar los puertos directos 2026-11-17T15:45:58
+  :3000 directo -> sin conexion (cerrado)
+  :5000 directo -> sin conexion (cerrado)
+  :5001 directo -> sin conexion (cerrado)
+  :5002 directo -> sin conexion (cerrado)
+  :5003 directo -> sin conexion (cerrado)
+  :5004 directo -> sin conexion (cerrado)
+  :5005 directo -> sin conexion (cerrado)
+  :5006 directo -> sin conexion (cerrado)
+  :6001 directo -> sin conexion (cerrado)
+  :8090 directo -> sin conexion (cerrado)
+  :8441 directo -> sin conexion (cerrado)
+  http://34.135.84.31/health -> HTTP 200
+  http://34.135.84.31:8080/health -> HTTP 200
+  http://34.135.84.31/ -> HTTP 200

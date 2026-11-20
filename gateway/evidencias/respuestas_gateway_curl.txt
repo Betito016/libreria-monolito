@@ -1,0 +1,113 @@
+﻿Respuestas del gateway obtenidas con curl 2026-11-20T15:32:53
+
+==== GET http://34.135.84.31/health
+HTTP/1.1 200 OK
+Server: nginx/1.26.3
+Date: Fri, 20 Nov 2026 21:32:53 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 1164
+Connection: keep-alive
+X-Request-ID: baba9637fcd812f861fe972af1c2a1d2
+X-Gateway-Instancia: 127.0.0.1:8090
+
+{"estado": "ok", "gateway": "library-api-gateway", "servicios": {"login": {"instancias": [{"url": "http://127.0.0.1:5000", "http": 200, "detalle": "ok", "estado": "ok", "ms": 27}], "estado": "ok"}, "books": {"instancias": [{"url": "http://127.0.0.1:5001", "http": 200, "detalle": "ok", "estado": "ok", "ms": 42}, {"url": "http://127.0.0.1:6001", "http": 200, "detalle": "ok", "estado": "ok", "ms": 43}], "estado": "ok"}, "pagos": {"instancias": [{"url": "http://127.0.0.1:5002", "http": 200, "detalle": "ok", "estado": "ok", "ms": 20}], "estado": "ok"}, "pedidos": {"instancias": [{"url": "http://127.0.0.1:5003", "http": 200, "detalle": "ok", "estado": "ok", "ms": 24}], "estado": "ok"}, "users": {"instancias": [{"url": "http://127.0.0.1:5004", "http": 200, "detalle": "ok", "estado": "ok", "ms": 22}], "estado": "ok"}, "autores": {"instancias": [{"url": "http://127.0.0.1:5005", "http": 200, "detalle": "ok", "estado": "ok", "ms": 21}], "estado": "ok"}, "soap": {"instancias": [{"url": "http://127.0.0.1:5006", "http": 200, "estado": "ok", "ms": 12}], "estado": "ok"}}, "timestamp": "2026-11-20T21:32:53+00:00", "request_id": "baba9637fcd812f861fe972af1c2a1d2"}
+
+==== GET http://34.135.84.31/api/books/books?format=json&page_size=1
+HTTP/1.1 200 OK
+Server: nginx/1.26.3
+Date: Fri, 20 Nov 2026 21:32:53 GMT
+Content-Type: application/json
+Content-Length: 460
+Connection: keep-alive
+X-Cache: MISS
+Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Accept, Authorization
+X-Request-ID: 56a189a2128aec8703bc0b183685efca
+X-Gateway-Instancia: 127.0.0.1:5001
+
+{"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://covers.openlibrary.org/b/isbn/9780451524935-L.jpg","imagenes":[{"principal":true,"texto_alt":"1984 cover","url":"https://covers.openlibrary.org/b/isbn/9780451524935-L.jpg"}],"isbn":"9780451524935","precio":430.0,"stock":25,"titulo":"1984"}],"page":1,"page_size":1,"total":31,"total_pages":31}
+
+==== GET http://34.135.84.31/api/autores/authors?format=json&page_size=1
+HTTP/1.1 200 OK
+Server: nginx/1.26.3
+Date: Fri, 20 Nov 2026 21:32:53 GMT
+Content-Type: application/json
+Content-Length: 152
+Connection: keep-alive
+X-Cache: MISS
+Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Accept, Authorization
+X-Request-ID: b151ebc25ca39044c29e418cb71f0f01
+X-Gateway-Instancia: 127.0.0.1:5005
+
+{"autores":[{"id":9,"nacionalidad":null,"nombre":"Alicia D\u00edaz","total_libros":1}],"filtros":{},"page":1,"page_size":1,"total":21,"total_pages":21}
+
+==== GET http://34.135.84.31/api/users/users?format=json
+HTTP/1.1 401 UNAUTHORIZED
+Server: nginx/1.26.3
+Date: Fri, 20 Nov 2026 21:32:53 GMT
+Content-Type: application/json
+Content-Length: 150
+Connection: keep-alive
+WWW-Authenticate: Bearer error="invalid_token", error_description="ERR_TOKEN_AUSENTE"
+Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Accept, Authorization
+X-Request-ID: 400a0f9e1b4b0fc23bb5f282f5190447
+X-Gateway-Instancia: 127.0.0.1:5004
+
+{"codigo_error":"ERR_TOKEN_AUSENTE","estado":"error","mensaje":"Falta el header Authorization: Bearer <token>. Inicia sesi\u00f3n para obtener uno."}
+
+==== GET http://34.135.84.31/api/noexiste/x
+HTTP/1.1 404 Not Found
+Server: nginx/1.26.3
+Date: Fri, 20 Nov 2026 21:32:54 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 196
+Connection: keep-alive
+X-Request-ID: 70cc52555735db2463148b9fc121980b
+
+{"estado":"error","codigo_error":"ERR_GATEWAY_RUTA","mensaje":"Ruta no encontrada en el gateway. Usa /api/<servicio>/<ruta>.","servicio":"noexiste","request_id":"70cc52555735db2463148b9fc121980b"}
+
+==== GET http://34.135.84.31/library/login
+HTTP/1.1 301 Moved Permanently
+Server: nginx/1.26.3
+Date: Fri, 20 Nov 2026 21:32:54 GMT
+Content-Type: text/html
+Content-Length: 169
+Location: http://34.135.84.31/login
+Connection: keep-alive
+X-Request-ID: a3f90a6f50f3ff29de7726ac77d93b70
+
+<html>
+<head><title>301 Moved Permanently</title></head>
+<body>
+<center><h1>301 Moved Permanently</h1></center>
+<hr><center>nginx/1.26.3</center>
+</body>
+</html>
+
+==== GET http://34.135.84.31:8080/health
+HTTP/1.1 200 OK
+Server: nginx/1.26.3
+Date: Fri, 20 Nov 2026 21:32:54 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 1163
+Connection: keep-alive
+X-Request-ID: 16714f185bfa9742649196cc651fbd02
+X-Gateway-Instancia: 127.0.0.1:8090
+
+{"estado": "ok", "gateway": "library-api-gateway", "servicios": {"login": {"instancias": [{"url": "http://127.0.0.1:5000", "http": 200, "detalle": "ok", "estado": "ok", "ms": 15}], "estado": "ok"}, "books": {"instancias": [{"url": "http://127.0.0.1:5001", "http": 200, "detalle": "ok", "estado": "ok", "ms": 36}, {"url": "http://127.0.0.1:6001", "http": 200, "detalle": "ok", "estado": "ok", "ms": 34}], "estado": "ok"}, "pagos": {"instancias": [{"url": "http://127.0.0.1:5002", "http": 200, "detalle": "ok", "estado": "ok", "ms": 18}], "estado": "ok"}, "pedidos": {"instancias": [{"url": "http://127.0.0.1:5003", "http": 200, "detalle": "ok", "estado": "ok", "ms": 17}], "estado": "ok"}, "users": {"instancias": [{"url": "http://127.0.0.1:5004", "http": 200, "detalle": "ok", "estado": "ok", "ms": 22}], "estado": "ok"}, "autores": {"instancias": [{"url": "http://127.0.0.1:5005", "http": 200, "detalle": "ok", "estado": "ok", "ms": 15}], "estado": "ok"}, "soap": {"instancias": [{"url": "http://127.0.0.1:5006", "http": 200, "estado": "ok", "ms": 9}], "estado": "ok"}}, "timestamp": "2026-11-20T21:32:54+00:00", "request_id": "16714f185bfa9742649196cc651fbd02"}
+
+==== GET http://34.135.84.31/  (monolito, primeras lÃ­neas)
+HTTP/1.1 200 OK
+Server: nginx/1.26.3
+Date: Fri, 20 Nov 2026 21:32:54 GMT
+Content-Type: text/html; charset=utf-8
+Content-Length: 1057
+Connection: keep-alive
+X-Powered-By: Express
+ETag: W/"421-OdbZJdBEymbCo7ovE6qghhEz7rE"
+X-Request-ID: f227daa30458a6693e51697248b10736
+X-Gateway-Instancia: 127.0.0.1:3000
+
+<!DOCTYPE html>

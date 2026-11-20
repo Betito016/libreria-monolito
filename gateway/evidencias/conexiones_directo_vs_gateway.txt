@@ -1,0 +1,8 @@
+﻿Comprobacion de conexiones (curl, 3 peticiones seguidas en la misma ejecucion) 2026-11-17T15:43:20
+directo  books :5001 -> conexiones_nuevas=1 tiempo=0.125067s | conexiones_nuevas=1 tiempo=0.126432s | conexiones_nuevas=1 tiempo=0.124885s
+gateway  :8080       -> conexiones_nuevas=1 tiempo=0.106576s | conexiones_nuevas=0 tiempo=0.064693s | conexiones_nuevas=0 tiempo=0.062915s
+gateway  :80         -> conexiones_nuevas=1 tiempo=0.127666s | conexiones_nuevas=0 tiempo=0.059608s | conexiones_nuevas=0 tiempo=0.059772s
+
+Cabecera Connection:
+directo: Connection: close
+gateway: Connection: keep-alive

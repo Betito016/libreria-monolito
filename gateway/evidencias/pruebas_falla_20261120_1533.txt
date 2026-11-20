@@ -1,0 +1,52 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261120153309
+Username: LAPBETITO\ALEX1
+RunAs User: LAPBETITO\ALEX1
+Configuration Name: 
+Machine: LAPBETITO (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\pruebas_falla.ps1 -Gw http://34.135.84.31
+Process ID: 22744
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+==== 1. Round robin: 6 peticiones seguidas al catálogo (books :5001 y :6001) ====
+HTTP 200 instancia=127.0.0.1:6001 rid=4ded63fdf0d215bd3a70cb3ce2669cfe  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 200 instancia=127.0.0.1:5001 rid=71d593eac76ddf0ed740d7e9963d582c  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 200 instancia=127.0.0.1:6001 rid=56f10ac68365aaf3d77a18e0313c65b8  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 200 instancia=127.0.0.1:5001 rid=af2192383703e2890a5658d17e904334  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 200 instancia=127.0.0.1:6001 rid=b83c971b228a01c77052af2b57d0ded9  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 200 instancia=127.0.0.1:5001 rid=b31dba6411035e68f7bd9b680db51a7d  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+
+==== 2. Salud agregada con todo arriba ====
+HTTP 200 instancia=127.0.0.1:8090 rid=3fda41b4f14ad178139d481436cf6907  {"estado": "ok", "gateway": "library-api-gateway", "servicios": {"login": {"instancias": [{"url": "http://127.0.0.1:5000", "http": 200, "detalle": "ok", "estado": "ok", "
+
+==== 3. Instancia :5001 caída (systemctl stop library-books): el catálogo sigue respondiendo ====
+HTTP 200 instancia=127.0.0.1:6001 rid=ffbf3f7c8ea71460b14bb5ae7b1fd596  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 200 instancia=127.0.0.1:5001, 127.0.0.1:6001 rid=b79585b512976f24a3ea9a7469e6b1f2  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 200 instancia=127.0.0.1:6001 rid=ab955f7dd8b9b18b4aa492fc32fd12d2  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 200 instancia=127.0.0.1:5001, 127.0.0.1:6001 rid=9604dab7b80d81187c879d919a44ba65  {"filtros":{},"libros":[{"anio":1949,"autores":["Mat\u00edas Ortega"],"categoria":"Literatura","formato":"Paperback","generos":["Fiction"],"imagen_principal":"https://cov
+HTTP 503 instancia=127.0.0.1:8090 rid=249fa2885fb25d3cfc6f90abb06d7e32  {"estado": "degraded", "gateway": "library-api-gateway", "servicios": {"login": {"instancias": [{"url": "http://127.0.0.1:5000", "http": 200, "detalle": "ok", "estado": "
+
+==== 4. Servicio pagos caído (una sola instancia): 503 JSON con request_id ====
+HTTP 503 instancia=127.0.0.1:5002 rid=f396bdce4cc26e94ce23465c98d2de6d  {"estado":"error","codigo_error":"ERR_SERVICIO_NO_DISPONIBLE","mensaje":"El servicio pagos no estÃ¡ disponible en este momento.","servicio":"pagos","request_id":"f396bdce
+
+==== 5. Timeout: proceso de pagos congelado (SIGSTOP), el gateway corta a los 10 s con 504 ====
+HTTP 504 instancia=127.0.0.1:5002 rid=7ce069a6bffe4a52d2c78458d3f547e2  {"estado":"error","codigo_error":"ERR_TIEMPO_AGOTADO","mensaje":"El servicio pagos no respondiÃ³ a tiempo.","servicio":"pagos","request_id":"7ce069a6bffe4a52d2c78458d3f54  (tardó 10.2 s)
+
+==== 6. Ruta inexistente: 404 JSON del gateway ====
+HTTP 404 instancia=(gateway) rid=8e76fcf82560101b9605643970214cf1  {"estado":"error","codigo_error":"ERR_GATEWAY_RUTA","mensaje":"Ruta no encontrada en el gateway. Usa /api/<servicio>/<ruta>.","servicio":"inexistente","request_id":"8e76f
+
+==== 7. Recuperación: todo arriba otra vez ====
+HTTP 200 instancia=127.0.0.1:8090 rid=e7ee7449dce2cde64d191c0a3b1029a7  {"estado": "ok", "gateway": "library-api-gateway", "servicios": {"login": {"instancias": [{"url": "http://127.0.0.1:5000", "http": 200, "detalle": "ok", "estado": "ok", "
+**********************
+Windows PowerShell transcript end
+End time: 20261120153413
+**********************

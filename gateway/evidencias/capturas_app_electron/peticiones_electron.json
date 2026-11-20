@@ -1,0 +1,9 @@
+{
+  "url_base_configurada": "http://34.135.84.31/api/soap",
+  "endpoint": "/books",
+  "cards_mostradas": 12,
+  "estado_en_pantalla": "",
+  "peticiones_xhr_fetch": [
+    "http://34.135.84.31/api/soap/books?format=xml&page=1&page_size=12"
+  ]
+}

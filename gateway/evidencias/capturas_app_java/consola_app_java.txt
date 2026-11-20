@@ -1,0 +1,13 @@
+15:34:16  GET    /api/books/books                   -> HTTP 200   377 ms  instancia=127.0.0.1:6001  rid=java-258906a036060-2  (sin JWT)
+15:34:16  GET    /api/autores/authors               -> HTTP 200   377 ms  instancia=127.0.0.1:5005  rid=java-258906a5ae1f0-3  (sin JWT)
+15:34:16  GET    /health                            -> HTTP 200   377 ms  instancia=127.0.0.1:8090  rid=java-258906994b584-1  (sin JWT)
+15:34:25  GET    /api/books/books                   -> HTTP 200    77 ms  instancia=127.0.0.1:5001  rid=java-258926ee69b40-4  (sin JWT)
+15:34:30  GET    /api/users/users                   -> HTTP 401    59 ms  instancia=127.0.0.1:5004  rid=java-25893c4f02014-5  (sin JWT)
+15:34:31  GET    /health                            -> HTTP 200    91 ms  instancia=127.0.0.1:8090  rid=java-25893e872d720-6  (sin JWT)
+15:34:35  POST   /api/login/login                   -> HTTP 200   211 ms  instancia=127.0.0.1:5000  rid=java-25894d84db454-7  (sin JWT)
+15:34:35  GET    /api/users/users                   -> HTTP 200    68 ms  instancia=127.0.0.1:5004  rid=java-25894e88ce4ac-8  Bearer [JWT PRESENTE]
+15:34:41  GET    /api/books/books                   -> HTTP 200   129 ms  instancia=127.0.0.1:6001  rid=java-258962b775030-9  (sin JWT)
+15:34:42  GET    /api/books/books                   -> HTTP 200   127 ms  instancia=127.0.0.1:5001  rid=java-25896760f424c-10  (sin JWT)
+15:34:43  GET    /api/books/books                   -> HTTP 200   114 ms  instancia=127.0.0.1:6001  rid=java-25896c092a32c-11  (sin JWT)
+15:34:46  GET    /health                            -> HTTP 200    94 ms  instancia=127.0.0.1:8090  rid=java-25897675bbc98-12  (sin JWT)
+15:34:48  POST   /api/login/logout                  -> HTTP 200    62 ms  instancia=127.0.0.1:5000  rid=java-25897e296a594-13  Bearer [JWT PRESENTE]

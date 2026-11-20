@@ -1,0 +1,14 @@
+[Unit]
+Description=Library API Gateway: salud agregada de servicios e instancias (127.0.0.1:8090)
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+EnvironmentFile=/etc/library-gateway/gateway.env
+ExecStart=/usr/bin/python3 /opt/library-gateway/salud/salud_gateway.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

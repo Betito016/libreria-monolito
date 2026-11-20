@@ -1,0 +1,23 @@
+# Reflexión: implementación del Reverse Proxy / API Gateway en Library
+
+## Cómo fue la implementación
+
+Partimos de una arquitectura donde todos los servicios de Flask, el servicio SOAP y el monolito estaban expuestos en puertos distintos dentro de la instancia de GCP, lo que obligaba a las aplicaciones de escritorio a conocer seis direcciones diferentes. Elegí **nginx** como reverse proxy porque ya lo teníamos instalado, era la herramienta vista en clase y nos permitía resolver todo mediante archivos de configuración sin tener que programar un servidor nuevo desde cero.
+
+Fuimos avanzando por etapas y validando cada cambio directamente contra la instancia real. Primero armé un proxy básico en el puerto 8080, usando la barra final en `proxy_pass` para quitar el prefijo `/api/` y que cada servicio recibiera las rutas tal como ya las conocía. Después agregué tolerancia a fallos levantando una segunda instancia del servicio de libros en el puerto 6001 dentro de un bloque `upstream`, además de configurar límites de peticiones por IP para proteger el login, trazabilidad con `X-Request-ID` y un script pequeño en Python para resumir el estado de salud de todos los servicios.
+
+Lo que más me costó entender y ajustar fueron los detalles finos de la configuración, como lograr que el balanceo repartiera el tráfico de forma pareja entre los workers y reescribir correctamente la cabecera `Location` en las peticiones POST para no exponer rutas internas. Finalmente, cerré el acceso directo poniendo todos los servicios en `127.0.0.1`, limpié las reglas de firewall en GCP para dejar abiertos solo los puertos 80, 8080 y SSH, y adapté las aplicaciones cliente de Python, Electron y Java para que hablaran únicamente con el gateway. Al provocar fallas reales apagando instancias o congelando procesos con `SIGSTOP`, comprobé en la práctica cómo el sistema detecta un servicio caído y redirige el tráfico sin afectar al usuario.
+
+## Ventajas identificadas
+
+El cambio más importante fue pasar de tener ocho puertos expuestos a una sola puerta de entrada. Esto redujo muchísimo la superficie de ataque en Internet y desacopló por completo a las aplicaciones cliente de la infraestructura interna: ahora puedo levantar o mover instancias en el servidor sin tener que modificar el código de las apps.
+
+En las pruebas de disponibilidad, cuando apagué la instancia principal de libros en el puerto 5001, el catálogo siguió respondiendo con éxito porque nginx redirigió la petición al puerto 6001 en automático y sacó de rotación la instancia caída durante diez segundos. También me sorprendió el rendimiento: esperaba que meter un intermediario hiciera más lento el sistema, pero ocurrió lo contrario y la latencia bajó de unos 130 ms a 63 ms, ya que nginx mantiene vivas las conexiones con los clientes mientras que el servidor de desarrollo de Flask las cerraba en cada petición. Además, contar con respuestas de error estandarizadas en JSON y un `X-Request-ID` único facilita muchísimo rastrear exactamente qué falló y en qué instancia ocurrió.
+
+## Desventajas o retos encontrados
+
+La principal desventaja es que nginx se convierte en un punto único de falla: como corre dentro de la misma máquina virtual que el resto del sistema, si el servicio de nginx o la VM se caen, toda la plataforma deja de responder. En un entorno de producción real necesitaríamos al menos dos gateways en paralelo detrás de un balanceador de red.
+
+Durante el proceso también aparecieron varios retos técnicos. El balanceo round robin no alternaba de forma exacta al inicio porque cada worker de nginx llevaba su propio conteo hasta que compartimos una zona de memoria; además, tuvimos choques de nombres en las zonas de límite de tasa y nos topamos con que la red de la universidad bloqueaba el tráfico HTTP hacia la IP pública de nuestra instancia por no estar clasificada, obligándonos a terminar las pruebas desde otra red. A eso se sumó el esfuerzo extra de tener que construir desde cero el cliente de escritorio en Java y configurar su entorno.
+
+Si tuviera que mejorar esta arquitectura para llevarla a producción, lo primero sería habilitar HTTPS con TLS en el puerto 443 usando nuestro certificado, ya que al cerrar los puertos individuales dejamos el tráfico en HTTP plano. También eliminaría la cabecera `X-Gateway-Instancia` que usamos para las pruebas para no filtrar direcciones internas, y evaluaría validar los tokens JWT directamente en el gateway para rechazar peticiones no autorizadas antes de que consuman recursos en los microservicios.

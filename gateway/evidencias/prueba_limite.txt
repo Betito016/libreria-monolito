@@ -1,0 +1,4 @@
+﻿120 peticiones a http://34.135.84.31:8080/api/books/books?format=json&page_size=1 (30 en paralelo, una sola IP):
+  HTTP 200: 52
+  HTTP 429: 68
+  código de error en las 429: {'ERR_DEMASIADAS_SOLICITUDES'}

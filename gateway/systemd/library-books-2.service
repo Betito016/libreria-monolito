@@ -1,0 +1,18 @@
+[Unit]
+Description=Microservicio de libros, SEGUNDA instancia (puerto 6001) para el balanceo del gateway
+After=network.target postgresql.service redis.service library-login.service
+
+[Service]
+Type=simple
+User=booksapp
+WorkingDirectory=/opt/udem/integracion02/library/services/books
+# Mismo .env que la instancia 1 (misma BD, Redis y JWT). El segundo archivo se lee
+# DESPUÉS y solo cambia el puerto: BOOKS_PORT=6001. El código no se modifica.
+EnvironmentFile=/opt/udem/integracion02/library/services/books/.env
+EnvironmentFile=/etc/library-gateway/books-2.env
+ExecStart=/opt/udem/integracion02/library/services/books/venv/bin/python /opt/udem/integracion02/library/services/books/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
